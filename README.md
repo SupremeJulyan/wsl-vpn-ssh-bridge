@@ -34,11 +34,17 @@ autoProxy=true
 
 ## SSH
 
+`ssh-config.json` 可按名称保存 SSH 连接信息，字段与 `sshfs-conf.json` 中的连接字段一致：
+
 ```bash
+./ssh-vpn.sh gkn_zy
 ./ssh-vpn.sh user@10.0.0.10
 ./ssh-vpn.sh user@10.0.0.10 hostname
 VPN_TARGET_PORT=22022 ./ssh-vpn.sh user@10.0.0.10
 ```
+
+配置可包含 `name`、`ip`、`user`、`port`、`vpn`、`private_key_path` 和 `password`。
+推荐使用私钥；配置密码时需安装 `sshpass`。可通过 `SSH_CONFIG` 指定其他配置文件。
 
 ## SSHFS
 

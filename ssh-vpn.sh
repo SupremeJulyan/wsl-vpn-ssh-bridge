@@ -5,13 +5,16 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 用法:
+  ./ssh-vpn.sh name [远程命令...]
   ./ssh-vpn.sh user@host [远程命令...]
 
 示例:
+  ./ssh-vpn.sh example
   ./ssh-vpn.sh alice@10.0.0.10
   ./ssh-vpn.sh alice@10.0.0.10 uname -a
 
 环境变量:
+  SSH_CONFIG=/path/file.json 指定其他配置文件
   VPN_TARGET_PORT=22   目标 SSH 端口
 EOF
 }
@@ -26,34 +29,113 @@ case "$1" in
   -h|--help|help) usage; exit 0 ;;
 esac
 
-for command in ssh python3 powershell.exe wslpath flock; do
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+config_file="${SSH_CONFIG:-$script_dir/ssh-config.json}"
+requested_destination="$1"
+shift
+
+for command in ssh python3; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令 '$command'"
 done
 
-destination="$1"
-shift
-if [[ "$destination" == *@* ]]; then
-  ssh_user="${destination%@*}"
-  target_host="${destination##*@}"
-  local_destination="$ssh_user@127.0.0.1"
-else
-  target_host="$destination"
-  local_destination="127.0.0.1"
+config_values=()
+if [[ -r "$config_file" ]]; then
+  while IFS= read -r -d '' value; do
+    config_values+=("$value")
+  done < <(python3 - "$config_file" "$requested_destination" <<'PY'
+import json, os, sys
+
+config_path, selected = sys.argv[1:]
+try:
+    with open(config_path, encoding="utf-8") as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError) as e:
+    raise SystemExit(f"配置读取失败: {e}")
+
+entries = data.get("hosts", []) if isinstance(data, dict) else data
+if not isinstance(entries, list):
+    raise SystemExit("配置顶层必须是数组，或包含 hosts 数组的对象")
+
+for index, item in enumerate(entries):
+    if not isinstance(item, dict):
+        raise SystemExit(f"第 {index + 1} 项不是对象")
+    if str(item.get("name", "")) != selected:
+        continue
+    missing = [key for key in ("ip", "user") if not item.get(key)]
+    if missing:
+        raise SystemExit(f"配置 '{selected}' 缺少字段: {', '.join(missing)}")
+    values = (
+        str(item["ip"]), str(item["user"]), str(item.get("password") or ""),
+        os.path.expanduser(str(item.get("private_key_path") or "")),
+        str(item.get("port") or 22),
+        "true" if item.get("vpn", item.get("atrust", True)) else "false",
+    )
+    for value in values:
+        sys.stdout.buffer.write(value.encode() + b"\0")
+    break
+PY
+  )
 fi
+
+password=""
+private_key_path=""
+use_vpn=true
+if ((${#config_values[@]})); then
+  ((${#config_values[@]} == 6)) || die "配置项读取不完整"
+  target_host="${config_values[0]}"
+  ssh_user="${config_values[1]}"
+  password="${config_values[2]}"
+  private_key_path="${config_values[3]}"
+  target_port="${config_values[4]}"
+  use_vpn="${config_values[5]}"
+  local_destination="$ssh_user@$target_host"
+  tunnel_destination="$ssh_user@127.0.0.1"
+else
+  destination="$requested_destination"
+  if [[ "$destination" == *@* ]]; then
+    ssh_user="${destination%@*}"
+    target_host="${destination##*@}"
+    local_destination="$ssh_user@$target_host"
+    tunnel_destination="$ssh_user@127.0.0.1"
+  else
+    target_host="$destination"
+    local_destination="$destination"
+    tunnel_destination="127.0.0.1"
+  fi
+  target_port="${VPN_TARGET_PORT:-22}"
+fi
+target_port="${VPN_TARGET_PORT:-$target_port}"
+
 [[ -n "$target_host" ]] || die "目标主机不能为空"
 
-target_port="${VPN_TARGET_PORT:-22}"
 [[ "$target_port" =~ ^[0-9]+$ ]] \
   && ((target_port >= 1 && target_port <= 65535)) \
-  || die "VPN_TARGET_PORT 必须是 1-65535 的整数"
+  || die "SSH 端口必须是 1-65535 的整数"
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ssh_options=()
+if [[ -n "$private_key_path" ]]; then
+  [[ -r "$private_key_path" ]] || die "私钥不可读: $private_key_path"
+  ssh_options+=(-i "$private_key_path")
+fi
+ssh_command=(ssh)
+if [[ -n "$password" ]]; then
+  command -v sshpass >/dev/null 2>&1 || die "配置包含密码，请先安装 'sshpass'"
+  ssh_command=(sshpass -e ssh)
+  export SSHPASS="$password"
+fi
+
+if [[ "$use_vpn" != true ]]; then
+  exec "${ssh_command[@]}" "${ssh_options[@]}" -p "$target_port" -- "$local_destination" "$@"
+fi
+
+for command in powershell.exe wslpath flock; do
+  command -v "$command" >/dev/null 2>&1 || die "缺少命令 '$command'"
+done
 source "$script_dir/vpn-relay-pool.sh"
 relay_holder="ssh-$$"
 read -r relay_pid local_port relay_status < <(
   vpn_relay_acquire "$target_host" "$target_port" "$relay_holder"
 ) || die "Windows TCP 中继启动失败"
-
 cleanup() {
   vpn_relay_release "$target_host" "$target_port" "$relay_holder" || true
 }
@@ -67,8 +149,9 @@ if [[ "$target_port" != 22 ]]; then
   host_key_alias="[$target_host]:$target_port"
 fi
 
-ssh \
+"${ssh_command[@]}" \
+  "${ssh_options[@]}" \
   -p "$local_port" \
   -o "HostKeyAlias=$host_key_alias" \
   -o CheckHostIP=no \
-  "$local_destination" "$@"
+  -- "$tunnel_destination" "$@"
