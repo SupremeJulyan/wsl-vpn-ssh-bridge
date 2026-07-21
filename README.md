@@ -125,6 +125,12 @@ sshfs-vpn status
 sshfs-vpn unmount
 ```
 
+连接失败时可启用详细日志（不会输出密码）：
+
+```bash
+SSHFS_VPN_DEBUG=1 sshfs-vpn mount example
+```
+
 配置字段 `vpn: true` 表示通过 Windows VPN 中继连接；设为 `false` 时直接连接目标。旧字段 `atrust: true` 仍兼容。
 
 ## WSL 关闭时自动清理

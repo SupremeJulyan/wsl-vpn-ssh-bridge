@@ -176,6 +176,10 @@ mount_one() {
     [[ -r "$key" ]] || die "[$name] 私钥不可读: $key"
     options+=(-o "IdentityFile=$key")
   fi
+  if [[ "${SSHFS_VPN_DEBUG:-0}" == 1 ]]; then
+    options+=(-f -d -o sshfs_debug -o LogLevel=DEBUG3)
+    printf '[%s] 已启用 SSHFS 调试日志（不会输出密码）\n' "$name" >&2
+  fi
 
   printf '[%s] 挂载 %s@%s:%s -> %s\n' "$name" "$user" "$ip" "$remote_path" "$local_path"
   if [[ -n "$password" ]]; then
