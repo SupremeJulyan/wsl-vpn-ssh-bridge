@@ -5,13 +5,20 @@
 VPN_TOOLKIT_DIR="${VPN_TOOLKIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 VPN_POOL_DIR="${XDG_RUNTIME_DIR:-/tmp}/vpn-relay-pool-${UID}"
 
+vpn_powershell() {
+  # Windows interop cannot use an SSHFS/FUSE directory as its inherited cwd.
+  # Always launch PowerShell from the local toolkit directory so callers may
+  # run ssh-vpn.sh while their shell is inside a mounted directory.
+  (cd -- "$VPN_TOOLKIT_DIR" && powershell.exe "$@")
+}
+
 vpn_hash() {
   python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:24])' "$1"
 }
 
 vpn_process_valid() {
   local pid="$1" port="$2"
-  powershell.exe -NoProfile -Command \
+  vpn_powershell -NoProfile -Command \
     "\$p=Get-CimInstance Win32_Process -Filter 'ProcessId=$pid' -ErrorAction SilentlyContinue; \$l=Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Where-Object OwningProcess -eq $pid; if(\$p.CommandLine -like '*windows_tcp_relay.py*' -and \$l){'true'}else{'false'}" \
     </dev/null 2>/dev/null | tr -d '\r'
 }
@@ -19,7 +26,7 @@ vpn_process_valid() {
 vpn_stop_process() {
   local pid="$1"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 0
-  powershell.exe -NoProfile -Command \
+  vpn_powershell -NoProfile -Command \
     "\$p=Get-CimInstance Win32_Process -Filter 'ProcessId=$pid' -ErrorAction SilentlyContinue; if(\$p.CommandLine -like '*windows_tcp_relay.py*'){Stop-Process -Id $pid -Force; Wait-Process -Id $pid -Timeout 5 -ErrorAction SilentlyContinue}" \
     </dev/null >/dev/null 2>&1 || true
 }
@@ -65,7 +72,7 @@ vpn_relay_acquire() {
     relay_win="$(wslpath -w "$VPN_TOOLKIT_DIR/windows_tcp_relay.py")"
     starter_win="$(wslpath -w "$VPN_TOOLKIT_DIR/start-vpn-relay.ps1")"
     relay_json="$({
-      powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$starter_win" \
+      vpn_powershell -NoProfile -ExecutionPolicy Bypass -File "$starter_win" \
         -RelayScript "$relay_win" \
         -TargetHost "$target_host" \
         -TargetPort "$target_port" \

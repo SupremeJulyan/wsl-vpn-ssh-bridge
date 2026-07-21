@@ -46,6 +46,15 @@ VPN_TARGET_PORT=22022 ./ssh-vpn.sh user@10.0.0.10
 配置可包含 `name`、`ip`、`user`、`port`、`vpn`、`private_key_path` 和 `password`。
 推荐使用私钥；配置密码时需安装 `sshpass`。可通过 `SSH_CONFIG` 指定其他配置文件。
 
+在 Bash 中启用挂载目录登录提醒：
+
+```bash
+source /path/to/wsl-vpn-ssh-bridge/ssh-vpn-reminder.sh
+```
+
+将上面一行加入 `~/.bashrc` 后，每次进入配置中的 SSHFS 挂载目录，终端都会提示对应的
+`ssh-vpn.sh name` 命令。
+
 ## SSHFS
 
 复制示例配置，并填写真实服务器信息：
