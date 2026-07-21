@@ -78,7 +78,7 @@ def save_config(path, data):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("kind", choices=("ssh", "sshfs"))
-    parser.add_argument("script_dir")
+    parser.add_argument("config_dir")
     args = parser.parse_args()
     collection = "hosts" if args.kind == "ssh" else "mounts"
     default_file = "ssh-conf.json" if args.kind == "ssh" else "sshfs-conf.json"
@@ -99,7 +99,7 @@ def main():
     entry["vpn"] = boolean_value()
     if key:
         entry["private_key_path"] = key
-    path = os.path.join(args.script_dir, default_file)
+    path = os.path.join(args.config_dir, default_file)
 
     if plain_password:
         entry["password"] = encrypt(plain_password, master_password(confirm=True))

@@ -5,15 +5,15 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 用法:
-  ./ssh-vpn.sh config
-  ./ssh-vpn.sh list
-  ./ssh-vpn.sh name [远程命令...]
-  ./ssh-vpn.sh user@host [远程命令...]
+  ssh-vpn config
+  ssh-vpn list
+  ssh-vpn name [远程命令...]
+  ssh-vpn user@host [远程命令...]
 
 示例:
-  ./ssh-vpn.sh example
-  ./ssh-vpn.sh alice@10.0.0.10
-  ./ssh-vpn.sh alice@10.0.0.10 uname -a
+  ssh-vpn example
+  ssh-vpn alice@10.0.0.10
+  ssh-vpn alice@10.0.0.10 uname -a
 
 环境变量:
   VPN_TARGET_PORT=22   目标 SSH 端口
@@ -30,8 +30,10 @@ case "$1" in
   -h|--help|help) usage; exit 0 ;;
 esac
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-config_file="$script_dir/ssh-conf.json"
+script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
+script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"
+config_dir="${HOME:?}/.wsl-vpn-ssh"
+config_file="$config_dir/ssh-conf.json"
 
 if [[ "$1" == config ]]; then
   [[ $# -eq 1 ]] || die "config 不接受其他参数"
@@ -39,7 +41,7 @@ if [[ "$1" == config ]]; then
     set -- list
   else
     command -v python3 >/dev/null 2>&1 || die "缺少命令 'python3'"
-    python3 "$script_dir/config_wizard.py" ssh "$script_dir"
+    python3 "$script_dir/config_wizard.py" ssh "$config_dir"
     exit
   fi
 fi

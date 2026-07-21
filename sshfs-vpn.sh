@@ -2,8 +2,10 @@
 
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/sshfs-conf.json"
+SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
+CONFIG_DIR="${HOME:?}/.wsl-vpn-ssh"
+CONFIG_FILE="$CONFIG_DIR/sshfs-conf.json"
 RELAY_SCRIPT="$SCRIPT_DIR/windows_tcp_relay.py"
 RELAY_STARTER="$SCRIPT_DIR/start-vpn-relay.ps1"
 source "$SCRIPT_DIR/vpn-relay-pool.sh"
@@ -11,13 +13,13 @@ source "$SCRIPT_DIR/vpn-relay-pool.sh"
 usage() {
   cat <<'EOF'
 用法:
-  ./sshfs-vpn.sh config          交互创建或更新配置
-  ./sshfs-vpn.sh mount           挂载配置中的第一项
-  ./sshfs-vpn.sh mount -all      挂载全部配置项
-  ./sshfs-vpn.sh mount [name]    挂载指定配置项
-  ./sshfs-vpn.sh unmount [name]  卸载指定项；省略 name 时卸载全部
-  ./sshfs-vpn.sh status [name]   查看挂载状态
-  ./sshfs-vpn.sh list            列出配置项
+  sshfs-vpn config          交互创建配置或列出已有配置
+  sshfs-vpn mount           挂载配置中的第一项
+  sshfs-vpn mount -all      挂载全部配置项
+  sshfs-vpn mount [name]    挂载指定配置项
+  sshfs-vpn unmount [name]  卸载指定项；省略 name 时卸载全部
+  sshfs-vpn status [name]   查看挂载状态
+  sshfs-vpn list            列出配置项
 
 EOF
 }
@@ -38,7 +40,7 @@ if [[ "${1:-}" == config ]]; then
   if [[ -e "$CONFIG_FILE" ]]; then
     set -- list
   else
-    python3 "$SCRIPT_DIR/config_wizard.py" sshfs "$SCRIPT_DIR"
+    python3 "$SCRIPT_DIR/config_wizard.py" sshfs "$CONFIG_DIR"
     exit
   fi
 fi
@@ -49,10 +51,10 @@ fi
 read_entries() {
   local selected="${1:-}"
   local selection_mode="${2:-all}"
-  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$SCRIPT_DIR" <<'PY'
+  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$CONFIG_DIR" <<'PY'
 import json, os, sys
 
-config_path, selected, selection_mode, script_dir = sys.argv[1:]
+config_path, selected, selection_mode, config_dir = sys.argv[1:]
 try:
     with open(config_path, encoding="utf-8") as f:
         data = json.load(f)
@@ -83,9 +85,9 @@ for index, item in enumerate(entries):
     if selection_mode == "named" and name != selected:
         continue
     found = True
-    local_path = item.get("local_path") or os.path.join(script_dir, "mnt", name)
+    local_path = item.get("local_path") or os.path.join(config_dir, "mnt", name)
     if not os.path.isabs(local_path):
-        local_path = os.path.abspath(os.path.join(script_dir, local_path))
+        local_path = os.path.abspath(os.path.join(config_dir, local_path))
     values = (
         name, str(item["ip"]), str(item["user"]),
         str(item.get("password") or ""),
