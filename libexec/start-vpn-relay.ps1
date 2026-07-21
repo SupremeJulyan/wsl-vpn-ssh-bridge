@@ -53,7 +53,8 @@ for ($attempt = 0; $attempt -lt 50; $attempt++) {
         -State Listen `
         -LocalAddress 127.0.0.1 `
         -LocalPort $listenPort `
-        -ErrorAction SilentlyContinue
+        -ErrorAction SilentlyContinue |
+        Where-Object OwningProcess -eq $process.Id
     if ($listener) {
         $ready = $true
         break

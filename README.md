@@ -139,6 +139,12 @@ systemctl --user status sshfs-vpn-cleanup.service
 ## 安全说明
 
 - 中继仅监听 Windows/WSL 共享的 `127.0.0.1`。
+- 中继状态目录必须属于当前用户，拒绝符号链接，并强制使用 `0700`；状态、锁和租约文件使用
+  `0600`，防止其他本地用户读取或篡改。
+- Windows 启动器会确认随机端口的监听进程就是刚启动的中继，避免端口释放与重新绑定之间被
+  其他进程抢占。
 - 首次 SSHFS 连接使用 `StrictHostKeyChecking=accept-new`；之后主机密钥变化会被拒绝。
+- SSHFS 对非 22 端口使用 `[ip]:port` 作为主机密钥别名，避免同一 IP 上不同 SSH 服务共用或
+  冲突主机密钥。
 - 私钥、密码和真实 `sshfs-conf.json` 不应提交到版本库。
 - 当前实现仅支持 TCP，不支持 UDP。

@@ -5,6 +5,28 @@
 VPN_TOOLKIT_DIR="${VPN_TOOLKIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 VPN_POOL_DIR="${XDG_RUNTIME_DIR:-/tmp}/vpn-relay-pool-${UID}"
 
+vpn_secure_pool_dir() {
+  local owner expected_owner
+  expected_owner="$(id -u)" || return 1
+  if [[ -L "$VPN_POOL_DIR" ]]; then
+    printf '不安全的中继状态目录（符号链接）: %s\n' "$VPN_POOL_DIR" >&2
+    return 1
+  fi
+  if [[ ! -e "$VPN_POOL_DIR" ]]; then
+    mkdir -m 700 -- "$VPN_POOL_DIR" || return 1
+  fi
+  if [[ ! -d "$VPN_POOL_DIR" || -L "$VPN_POOL_DIR" ]]; then
+    printf '中继状态路径不是安全目录: %s\n' "$VPN_POOL_DIR" >&2
+    return 1
+  fi
+  owner="$(stat -c %u -- "$VPN_POOL_DIR")" || return 1
+  if [[ "$owner" != "$expected_owner" ]]; then
+    printf '中继状态目录不属于当前用户: %s\n' "$VPN_POOL_DIR" >&2
+    return 1
+  fi
+  chmod 700 -- "$VPN_POOL_DIR"
+}
+
 vpn_powershell() {
   # Windows interop cannot use an SSHFS/FUSE directory as its inherited cwd.
   # Always launch PowerShell from the local toolkit directory so callers may
@@ -39,17 +61,18 @@ vpn_relay_acquire() {
   local relay_json relay_win starter_win valid="false"
   local lock_fd
 
-  for command in python3 powershell.exe wslpath flock; do
+  for command in python3 powershell.exe wslpath flock stat; do
     command -v "$command" >/dev/null 2>&1 \
       || { printf '缺少命令: %s\n' "$command" >&2; return 1; }
   done
   key="$(vpn_hash "$target_host:$target_port")"
   holder_key="$(vpn_hash "$holder")"
-  mkdir -p -- "$VPN_POOL_DIR"
+  vpn_secure_pool_dir || return 1
   state_file="$VPN_POOL_DIR/$key.state"
   lease_dir="$VPN_POOL_DIR/$key.leases"
   lock_file="$VPN_POOL_DIR/$key.lock"
   exec {lock_fd}>"$lock_file"
+  chmod 600 -- "$lock_file"
   flock "$lock_fd"
 
   if [[ -r "$state_file" ]]; then
@@ -84,11 +107,14 @@ vpn_relay_acquire() {
     )
     printf '%s\n%s\n%s\n%s\n' \
       "$relay_pid" "$local_port" "$target_host" "$target_port" >"$state_file"
+    chmod 600 -- "$state_file"
     relay_status="created"
   fi
 
-  mkdir -p -- "$lease_dir"
+  mkdir -m 700 -p -- "$lease_dir"
+  chmod 700 -- "$lease_dir"
   printf '%s\n' "$holder" >"$lease_dir/$holder_key"
+  chmod 600 -- "$lease_dir/$holder_key"
   printf '%s %s %s\n' "$relay_pid" "$local_port" "$relay_status"
   flock -u "$lock_fd"
   exec {lock_fd}>&-
@@ -97,6 +123,8 @@ vpn_relay_acquire() {
 vpn_relay_release() {
   local target_host="$1" target_port="$2" holder="$3"
   local key holder_key state_file lease_dir lock_file relay_pid="" lock_fd
+  [[ -e "$VPN_POOL_DIR" || -L "$VPN_POOL_DIR" ]] || return 0
+  vpn_secure_pool_dir || return 1
   key="$(vpn_hash "$target_host:$target_port")"
   holder_key="$(vpn_hash "$holder")"
   state_file="$VPN_POOL_DIR/$key.state"
@@ -104,6 +132,7 @@ vpn_relay_release() {
   lock_file="$VPN_POOL_DIR/$key.lock"
   [[ -e "$state_file" || -d "$lease_dir" ]] || return 0
   exec {lock_fd}>"$lock_file"
+  chmod 600 -- "$lock_file"
   flock "$lock_fd"
   rm -f -- "$lease_dir/$holder_key"
   if [[ ! -d "$lease_dir" ]] || ! find "$lease_dir" -mindepth 1 -maxdepth 1 -type f -print -quit | grep -q .; then

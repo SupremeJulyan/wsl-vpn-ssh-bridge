@@ -135,7 +135,12 @@ mount_one() {
   local remote_path="$6" local_path="$7" port="$8" vpn="$9"
   local -a options=(-p "$port" -o reconnect -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
   local connect_ip="$ip" connect_port="$port"
+  local host_key_alias="$ip"
   local mount_status=0
+
+  if [[ "$port" != 22 ]]; then
+    host_key_alias="[$ip]:$port"
+  fi
 
   if is_mounted "$local_path"; then
     printf '[%s] 已挂载: %s\n' "$name" "$local_path"
@@ -152,7 +157,7 @@ mount_one() {
     connect_port="$(start_relay "$name" "$ip" "$port")"
     connect_ip="127.0.0.1"
     options=(-p "$connect_port" -o reconnect -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-    options+=(-o "HostKeyAlias=$ip" -o CheckHostIP=no -o StrictHostKeyChecking=accept-new)
+    options+=(-o "HostKeyAlias=$host_key_alias" -o CheckHostIP=no -o StrictHostKeyChecking=accept-new)
     printf '[%s] VPN 中继 127.0.0.1:%s -> %s:%s\n' \
       "$name" "$connect_port" "$ip" "$port"
     trap "stop_relay '$name' '$ip' '$port'; exit 130" INT TERM
