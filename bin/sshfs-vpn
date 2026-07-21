@@ -12,6 +12,7 @@ source "$INSTALL_ROOT/libexec/vpn-relay-pool.sh"
 usage() {
   cat <<'EOF'
 用法:
+  sshfs-vpn -h | --help
   sshfs-vpn config          交互创建配置或列出已有配置
   sshfs-vpn mount           挂载配置中的第一项
   sshfs-vpn mount -all      挂载全部配置项
@@ -33,6 +34,15 @@ need_command() {
 }
 
 need_command python3
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 2
+fi
+
+case "$1" in
+  -h|--help|help) usage; exit ;;
+esac
 
 if [[ "${1:-}" == config ]]; then
   [[ $# -eq 1 ]] || die "config 不接受其他参数"

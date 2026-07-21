@@ -5,6 +5,7 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 用法:
+  ssh-vpn -h | --help
   ssh-vpn config                    创建或编辑配置
   ssh-vpn list
   ssh-vpn name [远程命令...]
