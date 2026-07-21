@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Encrypt/decrypt passwords stored in the bridge JSON configuration."""
+"""Encrypt and decrypt passwords stored in bridge JSON configuration."""
 
 import argparse
 import base64

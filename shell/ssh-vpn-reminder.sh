@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Source this file from ~/.bashrc. It reminds the user how to open an SSH
+# Installed into the user's shell startup. It reminds the user how to open an SSH
 # session when entering a local directory configured as an SSHFS mount.
 
 _ssh_vpn_reminder_dir="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"

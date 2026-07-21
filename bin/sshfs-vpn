@@ -4,11 +4,10 @@ set -Eeuo pipefail
 
 SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
+INSTALL_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 CONFIG_DIR="${HOME:?}/.wsl-vpn-ssh"
 CONFIG_FILE="$CONFIG_DIR/sshfs-conf.json"
-RELAY_SCRIPT="$SCRIPT_DIR/windows_tcp_relay.py"
-RELAY_STARTER="$SCRIPT_DIR/start-vpn-relay.ps1"
-source "$SCRIPT_DIR/vpn-relay-pool.sh"
+source "$INSTALL_ROOT/libexec/vpn-relay-pool.sh"
 
 usage() {
   cat <<'EOF'
@@ -38,9 +37,10 @@ need_command python3
 if [[ "${1:-}" == config ]]; then
   [[ $# -eq 1 ]] || die "config 不接受其他参数"
   if [[ -e "$CONFIG_FILE" ]]; then
-    set -- list
+    python3 "$INSTALL_ROOT/lib/config_editor.py" sshfs "$CONFIG_FILE"
+    exit
   else
-    python3 "$SCRIPT_DIR/config_wizard.py" sshfs "$CONFIG_DIR"
+    python3 "$INSTALL_ROOT/lib/config_wizard.py" sshfs "$CONFIG_DIR"
     exit
   fi
 fi
@@ -143,7 +143,7 @@ mount_one() {
   fi
 
   if [[ -n "$password" ]]; then
-    password="$(python3 "$SCRIPT_DIR/password_crypto.py" "$CONFIG_FILE" mounts "$name")" \
+    password="$(python3 "$INSTALL_ROOT/lib/password_crypto.py" "$CONFIG_FILE" mounts "$name")" \
       || die "[$name] 配置密码处理失败"
   fi
 

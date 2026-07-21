@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive JSON configuration wizard for SSH and SSHFS."""
+"""Interactive first-run configuration wizard for SSH and SSHFS."""
 
 import argparse
 import getpass

@@ -5,7 +5,7 @@ Description=Unmount VPN SSHFS mounts when the WSL user session stops
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/true
-ExecStop=@TOOLKIT_DIR@/sshfs-vpn.sh unmount
+ExecStop=@INSTALL_ROOT@/bin/sshfs-vpn unmount
 TimeoutStopSec=30
 
 [Install]

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Windows-side TCP relay implementation.
 """Small TCP relay for reaching a VPN-only SSH host from WSL."""
 
 import argparse

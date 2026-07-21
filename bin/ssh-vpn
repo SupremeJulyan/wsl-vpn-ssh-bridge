@@ -5,7 +5,7 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 用法:
-  ssh-vpn config
+  ssh-vpn config                    创建或编辑配置
   ssh-vpn list
   ssh-vpn name [远程命令...]
   ssh-vpn user@host [远程命令...]
@@ -32,16 +32,19 @@ esac
 
 script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
 script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"
+install_root="$(cd -- "$script_dir/.." && pwd)"
 config_dir="${HOME:?}/.wsl-vpn-ssh"
 config_file="$config_dir/ssh-conf.json"
 
 if [[ "$1" == config ]]; then
   [[ $# -eq 1 ]] || die "config 不接受其他参数"
   if [[ -e "$config_file" ]]; then
-    set -- list
+    command -v python3 >/dev/null 2>&1 || die "缺少命令 'python3'"
+    python3 "$install_root/lib/config_editor.py" ssh "$config_file"
+    exit
   else
     command -v python3 >/dev/null 2>&1 || die "缺少命令 'python3'"
-    python3 "$script_dir/config_wizard.py" ssh "$config_dir"
+    python3 "$install_root/lib/config_wizard.py" ssh "$config_dir"
     exit
   fi
 fi
@@ -133,7 +136,7 @@ if ((${#config_values[@]})); then
   ssh_user="${config_values[1]}"
   password="${config_values[2]}"
   if [[ -n "$password" ]]; then
-    password="$(python3 "$script_dir/password_crypto.py" "$config_file" hosts "$requested_destination")" \
+    password="$(python3 "$install_root/lib/password_crypto.py" "$config_file" hosts "$requested_destination")" \
       || die "配置密码处理失败"
   fi
   private_key_path="${config_values[3]}"
@@ -182,7 +185,7 @@ fi
 for command in powershell.exe wslpath flock; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令 '$command'"
 done
-source "$script_dir/vpn-relay-pool.sh"
+source "$install_root/libexec/vpn-relay-pool.sh"
 relay_holder="ssh-$$"
 read -r relay_pid local_port relay_status < <(
   vpn_relay_acquire "$target_host" "$target_port" "$relay_holder"

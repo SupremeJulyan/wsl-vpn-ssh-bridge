@@ -18,16 +18,19 @@ for command in install ln readlink python3; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令 '$command'"
 done
 
-mkdir -p -- "$install_dir" "$bin_dir" "$config_dir"
+mkdir -p -- \
+  "$install_dir/bin" "$install_dir/lib" "$install_dir/libexec" \
+  "$install_dir/shell" "$install_dir/systemd" "$bin_dir" "$config_dir"
 chmod 700 "$config_dir"
 
 scripts=(
-  ssh-vpn.sh sshfs-vpn.sh install-user-service.sh
+  bin/ssh-vpn bin/sshfs-vpn systemd/install-user-service.sh
 )
 helpers=(
-  config_wizard.py password_crypto.py vpn-relay-pool.sh
-  start-vpn-relay.ps1 windows_tcp_relay.py ssh-vpn-reminder.sh
-  sshfs-vpn-cleanup.service.in
+  lib/config_wizard.py lib/config_editor.py lib/password_crypto.py
+  libexec/vpn-relay-pool.sh libexec/start-vpn-relay.ps1
+  libexec/windows_tcp_relay.py shell/ssh-vpn-reminder.sh
+  systemd/sshfs-vpn-cleanup.service.in
 )
 for file in "${scripts[@]}"; do
   [[ -r "$source_dir/$file" ]] || die "安装文件缺失: $file"
@@ -44,8 +47,8 @@ for name in ssh-vpn sshfs-vpn; do
     die "不会覆盖已有文件: $target"
   fi
 done
-ln -sfn -- "$install_dir/ssh-vpn.sh" "$bin_dir/ssh-vpn"
-ln -sfn -- "$install_dir/sshfs-vpn.sh" "$bin_dir/sshfs-vpn"
+ln -sfn -- "$install_dir/bin/ssh-vpn" "$bin_dir/ssh-vpn"
+ln -sfn -- "$install_dir/bin/sshfs-vpn" "$bin_dir/sshfs-vpn"
 
 # Migrate legacy project-local configs without deleting the originals.
 for file in ssh-conf.json sshfs-conf.json; do
@@ -59,7 +62,7 @@ path_line='export PATH="$HOME/.local/bin:$PATH"'
 if [[ ":$PATH:" != *":$bin_dir:"* ]] && ! grep -Fqx "$path_line" "$bashrc" 2>/dev/null; then
   printf '\n# wsl-vpn-ssh-bridge\n%s\n' "$path_line" >>"$bashrc"
 fi
-reminder_line="source \"$install_dir/ssh-vpn-reminder.sh\""
+reminder_line="source \"$install_dir/shell/ssh-vpn-reminder.sh\""
 if ! grep -Fqx "$reminder_line" "$bashrc" 2>/dev/null; then
   printf '%s\n' "$reminder_line" >>"$bashrc"
 fi
@@ -67,7 +70,7 @@ fi
 if [[ "${WSL_VPN_SKIP_SERVICE:-0}" == 1 ]]; then
   printf '已按 WSL_VPN_SKIP_SERVICE=1 跳过 SSHFS 清理服务安装\n'
 elif command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
-  "$install_dir/install-user-service.sh"
+  "$install_dir/systemd/install-user-service.sh"
 else
   printf '警告: 当前用户级 systemd 不可用，已跳过 SSHFS 清理服务安装\n' >&2
 fi

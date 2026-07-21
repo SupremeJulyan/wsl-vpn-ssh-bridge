@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Shared, reference-counted Windows relay pool for ssh-vpn.sh and sshfs-vpn.sh.
+# Shared, reference-counted Windows relay pool for the installed commands.
 
 VPN_TOOLKIT_DIR="${VPN_TOOLKIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 VPN_POOL_DIR="${XDG_RUNTIME_DIR:-/tmp}/vpn-relay-pool-${UID}"
@@ -8,7 +8,7 @@ VPN_POOL_DIR="${XDG_RUNTIME_DIR:-/tmp}/vpn-relay-pool-${UID}"
 vpn_powershell() {
   # Windows interop cannot use an SSHFS/FUSE directory as its inherited cwd.
   # Always launch PowerShell from the local toolkit directory so callers may
-  # run ssh-vpn.sh while their shell is inside a mounted directory.
+  # run ssh-vpn while their shell is inside a mounted directory.
   (cd -- "$VPN_TOOLKIT_DIR" && powershell.exe "$@")
 }
 

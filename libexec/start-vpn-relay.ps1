@@ -1,3 +1,4 @@
+# Windows-side launcher for the TCP relay.
 param(
     [Parameter(Mandatory = $true)]
     [string]$RelayScript,
