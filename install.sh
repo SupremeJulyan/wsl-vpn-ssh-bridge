@@ -32,6 +32,8 @@ helpers=(
   libexec/windows_tcp_relay.py shell/ssh-vpn-reminder.sh
   systemd/sshfs-vpn-cleanup.service.in
 )
+[[ -r "$source_dir/uninstall.sh" ]] || die "安装文件缺失: uninstall.sh"
+install -m 755 -- "$source_dir/uninstall.sh" "$install_dir/uninstall.sh"
 for file in "${scripts[@]}"; do
   [[ -r "$source_dir/$file" ]] || die "安装文件缺失: $file"
   install -m 755 -- "$source_dir/$file" "$install_dir/$file"
@@ -63,9 +65,11 @@ if [[ ":$PATH:" != *":$bin_dir:"* ]] && ! grep -Fqx "$path_line" "$bashrc" 2>/de
   printf '\n# wsl-vpn-ssh-bridge\n%s\n' "$path_line" >>"$bashrc"
 fi
 reminder_line="source \"$install_dir/shell/ssh-vpn-reminder.sh\""
-if ! grep -Fqx "$reminder_line" "$bashrc" 2>/dev/null; then
-  printf '%s\n' "$reminder_line" >>"$bashrc"
+# Remove reminder paths written by older layouts, then add the current path once.
+if [[ -f "$bashrc" ]]; then
+  sed -i '\|ssh-vpn-reminder\.sh|d' "$bashrc"
 fi
+printf '%s\n' "$reminder_line" >>"$bashrc"
 
 if [[ "${WSL_VPN_SKIP_SERVICE:-0}" == 1 ]]; then
   printf '已按 WSL_VPN_SKIP_SERVICE=1 跳过 SSHFS 清理服务安装\n'

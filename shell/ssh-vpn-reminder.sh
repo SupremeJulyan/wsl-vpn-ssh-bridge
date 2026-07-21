@@ -30,7 +30,9 @@ current_dir = os.path.realpath(current_dir)
 for item in entries:
     if not isinstance(item, dict) or not item.get("name"):
         continue
-    local_path = item.get("local_path") or os.path.join(script_dir, "mnt", str(item["name"]))
+    local_path = item.get("local_path")
+    if not local_path:
+        continue
     if not os.path.isabs(local_path):
         local_path = os.path.join(script_dir, local_path)
     local_path = os.path.realpath(os.path.expanduser(local_path))

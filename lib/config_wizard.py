@@ -93,7 +93,7 @@ def main():
     key = input("私钥路径（留空则不设置）: ").strip()
     if args.kind == "sshfs":
         entry["remote_path"] = required("远程目录: ")
-        local_default = f"mnt/{entry['name']}"
+        local_default = os.path.join(os.getcwd(), entry["name"])
         entry["local_path"] = input(f"本地挂载目录 [{local_default}]: ").strip() or local_default
     entry["port"] = port_value()
     entry["vpn"] = boolean_value()
@@ -117,6 +117,8 @@ def main():
         entries[existing] = entry
         action = "更新"
     save_config(path, data)
+    if args.kind == "sshfs":
+        os.makedirs(os.path.expanduser(entry["local_path"]), exist_ok=True)
     print(f"已{action}配置 '{entry['name']}': {path}")
 
 

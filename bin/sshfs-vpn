@@ -51,10 +51,10 @@ fi
 read_entries() {
   local selected="${1:-}"
   local selection_mode="${2:-all}"
-  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$CONFIG_DIR" <<'PY'
+  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$PWD" <<'PY'
 import json, os, sys
 
-config_path, selected, selection_mode, config_dir = sys.argv[1:]
+config_path, selected, selection_mode, invocation_dir = sys.argv[1:]
 try:
     with open(config_path, encoding="utf-8") as f:
         data = json.load(f)
@@ -85,9 +85,9 @@ for index, item in enumerate(entries):
     if selection_mode == "named" and name != selected:
         continue
     found = True
-    local_path = item.get("local_path") or os.path.join(config_dir, "mnt", name)
+    local_path = item.get("local_path") or os.path.join(invocation_dir, name)
     if not os.path.isabs(local_path):
-        local_path = os.path.abspath(os.path.join(config_dir, local_path))
+        local_path = os.path.abspath(os.path.join(invocation_dir, local_path))
     values = (
         name, str(item["ip"]), str(item["user"]),
         str(item.get("password") or ""),

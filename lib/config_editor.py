@@ -144,6 +144,8 @@ def edit_entry(screen, kind, original):
                     entry["password"] = encrypt(str(entry["password"]), secret)
                 entry.setdefault("port", 22)
                 entry.setdefault("vpn", True)
+                if kind == "sshfs" and not entry.get("local_path"):
+                    entry["local_path"] = os.path.join(os.getcwd(), entry["name"])
                 return "save", entry
             elif selected == len(fields) + 1:
                 if original and confirm(screen, f"确认删除 '{original.get('name', '')}'"):
@@ -187,6 +189,8 @@ def run(screen, kind, path):
                     else:
                         entries[selected] = result
                     save_config(path, data)
+                    if kind == "sshfs":
+                        os.makedirs(os.path.expanduser(result["local_path"]), exist_ok=True)
                     break
                 if action == "delete":
                     entries.pop(selected)

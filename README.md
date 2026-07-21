@@ -26,16 +26,28 @@ WSL SSH/SSHFS -> Windows 127.0.0.1 随机端口 -> Windows VPN -> 目标服务�
 旧配置且目标文件尚不存在，安装程序会复制迁移并保留原文件。
 
 源码按用途组织：`bin/` 存放命令入口，`lib/` 存放配置与加密模块，`libexec/` 存放 VPN 中继，
-`shell/` 存放终端集成，`systemd/` 存放服务，`examples/` 存放示例。项目根目录只保留安装脚本和
-仓库说明文件。
+`shell/` 存放终端集成，`systemd/` 存放服务，`examples/` 存放示例。项目根目录只保留安装、
+卸载脚本和仓库说明文件。
+
+卸载时运行：
+
+```bash
+./uninstall.sh
+```
+
+交互运行时会询问是否同时删除 `~/.wsl-vpn-ssh/`。使用 `--purge` 可删除程序、配置和挂载目录，
+使用 `--keep-config` 可明确保留配置。卸载时会先解除配置中的全部挂载；如果仍检测到挂载点，
+则拒绝删除配置目录。
 
 ## 要求
 
 - Windows 11 与 WSL 2
 - WSL mirrored 网络模式
 - Windows Python 3，可通过 `py.exe -3` 启动
-- WSL 中安装 `openssh-client`、`python3`、`util-linux`
-- 使用 SSHFS 时安装 `sshfs`
+- WSL 中安装 `openssh-client`、`python3`、`util-linux`、`openssl`
+- 使用密码登录 SSH 时安装 `sshpass`
+- 使用 SSHFS 挂载时安装 `sshfs`
+- 若需自动清理挂载，WSL 中启用 systemd
 - Windows 主机已经连接 VPN，并能访问目标 TCP 端口
 
 Windows 用户目录的 `%UserProfile%\.wslconfig`：
@@ -70,8 +82,12 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 明文写入 JSON。配置文件已经存在时，`config` 会打开终端菜单：先用方向键和回车选择配置名，
 再编辑、保存或删除具体字段；菜单中也可以新增配置。
 
-若必须使用密码，可在配置顶层加入 `"encrypt_passwords": true`。当 `password` 还是明文时，
-第一次执行 `ssh-vpn name` 会要求设置加密口令，并把密码原子替换为 `enc:v1:...` 密文；
+菜单中使用 `↑`、`↓`、`←`、`→` 选择配置或字段，按 `Enter` 编辑和确认，按 `Esc` 取消。
+编辑 `vpn` 时左右键用于开关，编辑 `port` 时左右键用于增减端口。密码只显示是否已设置；输入
+新密码可替换，输入 `-` 可清除，留空则保留原密码。
+
+向导会自动写入 `"encrypt_passwords": true`。当旧配置中的 `password` 还是明文时，第一次执行
+`ssh-vpn name` 会要求设置加密口令，并把密码原子替换为 `enc:v1:...` 密文；
 以后连接时输入该口令即可。也可通过 `WSL_VPN_MASTER_PASSWORD` 提供口令（注意环境变量可能被
 同一用户的其他进程读取，不如交互输入安全）。加密依赖 `openssl`，忘记口令后无法恢复密码。
 
@@ -87,7 +103,9 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 
 首次运行 `sshfs-vpn config` 可交互填写连接字段、远程目录和本地挂载目录，并创建固定的
 `sshfs-conf.json`；端口、VPN 和加密默认值与 SSH 向导相同。文件存在时，`config` 会打开相同的
-终端配置编辑菜单。
+终端配置编辑菜单。本地挂载目录默认是运行 `sshfs-vpn config` 时所在的当前目录下与配置名称
+同名的子目录；例如在 `~/work` 创建名称 `server-a`，会立即创建并保存绝对路径
+`~/work/server-a`。手动填写相对路径时，则以执行 `sshfs-vpn` 时的当前目录为基准。
 
 ```bash
 sshfs-vpn config
@@ -111,7 +129,7 @@ sshfs-vpn unmount
 
 ## WSL 关闭时自动清理
 
-WSL 正常关闭时，用户级 systemd 服务会卸载全部 SSHFS；意外关闭时 FUSE 由内核清理，Windows 中继会在连接消失并空闲 30 秒后退出。
+WSL 正常关闭时，用户级 systemd 服务会解除全部 SSHFS 挂载；意外关闭时 FUSE 由内核清理，Windows 中继会在连接消失并空闲 30 秒后退出。
 
 ```bash
 ~/.local/share/wsl-vpn-ssh-bridge/systemd/install-user-service.sh
