@@ -1,0 +1,10 @@
+# Local credentials and mount configuration
+sshfs-conf.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Runtime artifacts
+*.log
+*.state

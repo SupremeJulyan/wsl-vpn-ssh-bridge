@@ -1,0 +1,14 @@
+{
+  "mounts": [
+    {
+      "name": "example",
+      "ip": "10.0.0.10",
+      "user": "username",
+      "remote_path": "/home/username",
+      "local_path": "../mnt/example",
+      "port": 22,
+      "vpn": true,
+      "private_key_path": "~/.ssh/id_ed25519"
+    }
+  ]
+}

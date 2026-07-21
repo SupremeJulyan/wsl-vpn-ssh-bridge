@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${SSHFS_CONFIG:-$SCRIPT_DIR/sshfs-conf.json}"
+RELAY_SCRIPT="$SCRIPT_DIR/windows_tcp_relay.py"
+RELAY_STARTER="$SCRIPT_DIR/start-vpn-relay.ps1"
+source "$SCRIPT_DIR/vpn-relay-pool.sh"
+
+usage() {
+  cat <<'EOF'
+用法:
+  ./sshfs.sh mount             挂载配置中的第一项
+  ./sshfs.sh mount -all        挂载全部配置项
+  ./sshfs.sh mount [name]      挂载指定配置项
+  ./sshfs.sh unmount [name]    卸载指定项；省略 name 时卸载全部
+  ./sshfs.sh status [name]     查看挂载状态
+  ./sshfs.sh list              列出配置项
+
+环境变量:
+  SSHFS_CONFIG=/path/file.json 指定其他配置文件
+EOF
+}
+
+die() {
+  printf '错误: %s\n' "$*" >&2
+  exit 1
+}
+
+need_command() {
+  command -v "$1" >/dev/null 2>&1 || die "缺少命令 '$1'，请先安装它"
+}
+
+[[ -r "$CONFIG_FILE" ]] || die "无法读取配置文件: $CONFIG_FILE"
+need_command python3
+
+# 输出以 NUL 分隔，避免空格或 shell 特殊字符破坏字段边界。
+read_entries() {
+  local selected="${1:-}"
+  local selection_mode="${2:-all}"
+  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$SCRIPT_DIR" <<'PY'
+import json, os, sys
+
+config_path, selected, selection_mode, script_dir = sys.argv[1:]
+try:
+    with open(config_path, encoding="utf-8") as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError) as e:
+    raise SystemExit(f"配置读取失败: {e}")
+
+if isinstance(data, dict) and "mounts" in data:
+    entries = data["mounts"]
+elif isinstance(data, list):
+    entries = data
+elif isinstance(data, dict):
+    entries = [data]
+else:
+    raise SystemExit("配置顶层必须是对象、数组，或包含 mounts 数组的对象")
+
+if not isinstance(entries, list):
+    raise SystemExit("mounts 必须是数组")
+
+found = False
+required = ("name", "ip", "user", "remote_path")
+for index, item in enumerate(entries):
+    if not isinstance(item, dict):
+        raise SystemExit(f"第 {index + 1} 项不是对象")
+    missing = [key for key in required if not item.get(key)]
+    if missing:
+        raise SystemExit(f"第 {index + 1} 项缺少字段: {', '.join(missing)}")
+    name = str(item["name"])
+    if selection_mode == "named" and name != selected:
+        continue
+    found = True
+    local_path = item.get("local_path") or os.path.join(script_dir, "mnt", name)
+    if not os.path.isabs(local_path):
+        local_path = os.path.abspath(os.path.join(script_dir, local_path))
+    values = (
+        name, str(item["ip"]), str(item["user"]),
+        str(item.get("password") or ""),
+        os.path.expanduser(str(item.get("private_key_path") or "")),
+        str(item["remote_path"]), local_path,
+        str(item.get("port") or 22),
+        # "atrust" is retained as a compatibility alias for older configs.
+        "true" if item.get("vpn", item.get("atrust", False)) else "false",
+    )
+    for value in values:
+        sys.stdout.buffer.write(value.encode() + b"\0")
+    if selection_mode == "first":
+        break
+
+if selection_mode == "named" and not found:
+    raise SystemExit(f"未找到名为 '{selected}' 的配置")
+PY
+}
+
+is_mounted() {
+  mountpoint -q -- "$1"
+}
+
+stop_relay() {
+  local name="$1" target_host="$2" target_port="$3"
+  vpn_relay_release "$target_host" "$target_port" "sshfs-$name"
+}
+
+start_relay() {
+  local name="$1" target_host="$2" target_port="$3"
+  local relay_pid local_port relay_status
+  for command in powershell.exe wslpath python3 flock; do
+    need_command "$command"
+  done
+  read -r relay_pid local_port relay_status < <(
+    vpn_relay_acquire "$target_host" "$target_port" "sshfs-$name"
+  ) || die "[$name] Windows TCP 中继启动失败"
+  printf '[%s] VPN 中继%s (Windows PID %s)\n' \
+    "$name" "$([[ "$relay_status" == reused ]] && printf '复用' || printf '新建')" "$relay_pid" >&2
+  printf '%s\n' "$local_port"
+}
+
+mount_one() {
+  local name="$1" ip="$2" user="$3" password="$4" key="$5"
+  local remote_path="$6" local_path="$7" port="$8" vpn="$9"
+  local -a options=(-p "$port" -o reconnect -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+  local connect_ip="$ip" connect_port="$port"
+  local mount_status=0
+
+  if is_mounted "$local_path"; then
+    printf '[%s] 已挂载: %s\n' "$name" "$local_path"
+    return
+  fi
+
+  mkdir -p -- "$local_path"
+  if [[ "$vpn" == true ]]; then
+    connect_port="$(start_relay "$name" "$ip" "$port")"
+    connect_ip="127.0.0.1"
+    options=(-p "$connect_port" -o reconnect -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+    options+=(-o "HostKeyAlias=$ip" -o CheckHostIP=no -o StrictHostKeyChecking=accept-new)
+    printf '[%s] VPN 中继 127.0.0.1:%s -> %s:%s\n' \
+      "$name" "$connect_port" "$ip" "$port"
+    trap "stop_relay '$name' '$ip' '$port'; exit 130" INT TERM
+  fi
+  if [[ -n "$key" ]]; then
+    [[ -r "$key" ]] || die "[$name] 私钥不可读: $key"
+    options+=(-o "IdentityFile=$key")
+  fi
+
+  printf '[%s] 挂载 %s@%s:%s -> %s\n' "$name" "$user" "$ip" "$remote_path" "$local_path"
+  if [[ -n "$password" ]]; then
+    printf '%s\n' "$password" | sshfs "${options[@]}" -o password_stdin -- \
+      "$user@$connect_ip:$remote_path" "$local_path" || mount_status=$?
+  else
+    sshfs "${options[@]}" -- "$user@$connect_ip:$remote_path" "$local_path" </dev/null \
+      || mount_status=$?
+  fi
+  trap - INT TERM
+  if ((mount_status != 0)); then
+    [[ "$vpn" == true ]] && stop_relay "$name" "$ip" "$port"
+    return "$mount_status"
+  fi
+}
+
+unmount_one() {
+  local name="$1" ip="$2" local_path="$7" port="$8" vpn="$9"
+  if ! is_mounted "$local_path"; then
+    printf '[%s] 未挂载: %s\n' "$name" "$local_path"
+    [[ "$vpn" == true ]] && stop_relay "$name" "$ip" "$port"
+    return
+  fi
+  printf '[%s] 卸载 %s\n' "$name" "$local_path"
+  if command -v fusermount3 >/dev/null 2>&1; then
+    fusermount3 -u -- "$local_path"
+  elif command -v fusermount >/dev/null 2>&1; then
+    fusermount -u -- "$local_path"
+  else
+    umount -- "$local_path"
+  fi
+  [[ "$vpn" == true ]] && stop_relay "$name" "$ip" "$port"
+}
+
+status_one() {
+  local name="$1" local_path="$7"
+  if is_mounted "$local_path"; then
+    printf '%-20s mounted    %s\n' "$name" "$local_path"
+  else
+    printf '%-20s unmounted  %s\n' "$name" "$local_path"
+  fi
+}
+
+list_one() {
+  local name="$1" ip="$2" user="$3" remote_path="$6" local_path="$7" port="$8"
+  printf '%-20s %s@%s:%s:%s -> %s\n' "$name" "$user" "$ip" "$port" "$remote_path" "$local_path"
+}
+
+main() {
+  local action="${1:-}" selected="${2:-}"
+  local entries_file selection_mode="all"
+  [[ $# -le 2 ]] || { usage >&2; exit 2; }
+  case "$action" in
+    mount)
+      need_command sshfs
+      need_command mountpoint
+      if [[ -z "$selected" ]]; then
+        selection_mode="first"
+      elif [[ "$selected" == "-all" ]]; then
+        selected=""
+        selection_mode="all"
+      else
+        selection_mode="named"
+      fi
+      ;;
+    unmount|status) need_command mountpoint ;;
+    list) [[ -z "$selected" ]] || die "list 不接受 name 参数" ;;
+    -h|--help|help) usage; return ;;
+    *) usage >&2; exit 2 ;;
+  esac
+
+  entries_file="$(mktemp "${TMPDIR:-/tmp}/sshfs-conf.XXXXXX")"
+  trap "rm -f -- '$entries_file'" EXIT
+  read_entries "$selected" "$selection_mode" >"$entries_file" || exit $?
+
+  while IFS= read -r -d '' name \
+    && IFS= read -r -d '' ip \
+    && IFS= read -r -d '' user \
+    && IFS= read -r -d '' password \
+    && IFS= read -r -d '' key \
+    && IFS= read -r -d '' remote_path \
+    && IFS= read -r -d '' local_path \
+    && IFS= read -r -d '' port \
+    && IFS= read -r -d '' vpn; do
+    case "$action" in
+      mount) mount_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
+      unmount) unmount_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
+      status) status_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
+      list) list_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
+    esac
+  done <"$entries_file"
+}
+
+main "$@"
