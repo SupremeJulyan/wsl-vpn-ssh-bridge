@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Shared, reference-counted Windows relay pool for ssh-vpn.sh and sshfs.sh.
+# Shared, reference-counted Windows relay pool for ssh-vpn.sh and sshfs-vpn.sh.
 
 VPN_TOOLKIT_DIR="${VPN_TOOLKIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 VPN_POOL_DIR="${XDG_RUNTIME_DIR:-/tmp}/vpn-relay-pool-${UID}"

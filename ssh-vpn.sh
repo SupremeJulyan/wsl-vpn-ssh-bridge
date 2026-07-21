@@ -5,6 +5,8 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 用法:
+  ./ssh-vpn.sh config
+  ./ssh-vpn.sh list
   ./ssh-vpn.sh name [远程命令...]
   ./ssh-vpn.sh user@host [远程命令...]
 
@@ -14,7 +16,6 @@ usage() {
   ./ssh-vpn.sh alice@10.0.0.10 uname -a
 
 环境变量:
-  SSH_CONFIG=/path/file.json 指定其他配置文件
   VPN_TARGET_PORT=22   目标 SSH 端口
 EOF
 }
@@ -30,7 +31,51 @@ case "$1" in
 esac
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-config_file="${SSH_CONFIG:-$script_dir/ssh-config.json}"
+config_file="$script_dir/ssh-conf.json"
+
+if [[ "$1" == config ]]; then
+  [[ $# -eq 1 ]] || die "config 不接受其他参数"
+  if [[ -e "$config_file" ]]; then
+    set -- list
+  else
+    command -v python3 >/dev/null 2>&1 || die "缺少命令 'python3'"
+    python3 "$script_dir/config_wizard.py" ssh "$script_dir"
+    exit
+  fi
+fi
+
+if [[ "$1" == list ]]; then
+  [[ $# -eq 1 ]] || die "list 不接受其他参数"
+  command -v python3 >/dev/null 2>&1 || die "缺少命令 'python3'"
+  [[ -r "$config_file" ]] || die "无法读取配置文件: $config_file"
+  python3 - "$config_file" <<'PY'
+import json, sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError) as e:
+    raise SystemExit(f"配置读取失败: {e}")
+
+entries = data.get("hosts", []) if isinstance(data, dict) else data
+if not isinstance(entries, list):
+    raise SystemExit("配置顶层必须是数组，或包含 hosts 数组的对象")
+
+print(f"{'NAME':<20} {'DESTINATION':<32} {'PORT':<6} VPN")
+for index, item in enumerate(entries):
+    if not isinstance(item, dict):
+        raise SystemExit(f"第 {index + 1} 项不是对象")
+    name = str(item.get("name") or "-")
+    host = str(item.get("ip") or "-")
+    user = str(item.get("user") or "")
+    destination = f"{user}@{host}" if user else host
+    port = str(item.get("port") or 22)
+    vpn = "yes" if item.get("vpn", item.get("atrust", True)) else "no"
+    print(f"{name:<20} {destination:<32} {port:<6} {vpn}")
+PY
+  exit
+fi
+
 requested_destination="$1"
 shift
 
@@ -85,6 +130,10 @@ if ((${#config_values[@]})); then
   target_host="${config_values[0]}"
   ssh_user="${config_values[1]}"
   password="${config_values[2]}"
+  if [[ -n "$password" ]]; then
+    password="$(python3 "$script_dir/password_crypto.py" "$config_file" hosts "$requested_destination")" \
+      || die "配置密码处理失败"
+  fi
   private_key_path="${config_values[3]}"
   target_port="${config_values[4]}"
   use_vpn="${config_values[5]}"

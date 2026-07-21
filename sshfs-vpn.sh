@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${SSHFS_CONFIG:-$SCRIPT_DIR/sshfs-conf.json}"
+CONFIG_FILE="$SCRIPT_DIR/sshfs-conf.json"
 RELAY_SCRIPT="$SCRIPT_DIR/windows_tcp_relay.py"
 RELAY_STARTER="$SCRIPT_DIR/start-vpn-relay.ps1"
 source "$SCRIPT_DIR/vpn-relay-pool.sh"
@@ -11,15 +11,14 @@ source "$SCRIPT_DIR/vpn-relay-pool.sh"
 usage() {
   cat <<'EOF'
 用法:
-  ./sshfs.sh mount             挂载配置中的第一项
-  ./sshfs.sh mount -all        挂载全部配置项
-  ./sshfs.sh mount [name]      挂载指定配置项
-  ./sshfs.sh unmount [name]    卸载指定项；省略 name 时卸载全部
-  ./sshfs.sh status [name]     查看挂载状态
-  ./sshfs.sh list              列出配置项
+  ./sshfs-vpn.sh config          交互创建或更新配置
+  ./sshfs-vpn.sh mount           挂载配置中的第一项
+  ./sshfs-vpn.sh mount -all      挂载全部配置项
+  ./sshfs-vpn.sh mount [name]    挂载指定配置项
+  ./sshfs-vpn.sh unmount [name]  卸载指定项；省略 name 时卸载全部
+  ./sshfs-vpn.sh status [name]   查看挂载状态
+  ./sshfs-vpn.sh list            列出配置项
 
-环境变量:
-  SSHFS_CONFIG=/path/file.json 指定其他配置文件
 EOF
 }
 
@@ -32,8 +31,19 @@ need_command() {
   command -v "$1" >/dev/null 2>&1 || die "缺少命令 '$1'，请先安装它"
 }
 
-[[ -r "$CONFIG_FILE" ]] || die "无法读取配置文件: $CONFIG_FILE"
 need_command python3
+
+if [[ "${1:-}" == config ]]; then
+  [[ $# -eq 1 ]] || die "config 不接受其他参数"
+  if [[ -e "$CONFIG_FILE" ]]; then
+    set -- list
+  else
+    python3 "$SCRIPT_DIR/config_wizard.py" sshfs "$SCRIPT_DIR"
+    exit
+  fi
+fi
+
+[[ -r "$CONFIG_FILE" ]] || die "无法读取配置文件: $CONFIG_FILE"
 
 # 输出以 NUL 分隔，避免空格或 shell 特殊字符破坏字段边界。
 read_entries() {
@@ -128,6 +138,11 @@ mount_one() {
   if is_mounted "$local_path"; then
     printf '[%s] 已挂载: %s\n' "$name" "$local_path"
     return
+  fi
+
+  if [[ -n "$password" ]]; then
+    password="$(python3 "$SCRIPT_DIR/password_crypto.py" "$CONFIG_FILE" mounts "$name")" \
+      || die "[$name] 配置密码处理失败"
   fi
 
   mkdir -p -- "$local_path"

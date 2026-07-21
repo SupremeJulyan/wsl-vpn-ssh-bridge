@@ -1,6 +1,6 @@
 # Local credentials and mount configuration
 sshfs-conf.json
-ssh-config.json
+ssh-conf.json
 
 # Python bytecode
 __pycache__/

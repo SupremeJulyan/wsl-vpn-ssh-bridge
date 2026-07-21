@@ -1,4 +1,5 @@
 {
+  "encrypt_passwords": true,
   "mounts": [
     {
       "name": "example",

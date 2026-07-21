@@ -8,7 +8,7 @@ _ssh_vpn_reminder_last_pwd=""
 _ssh_vpn_reminder_last_name=""
 
 _ssh_vpn_reminder() {
-  local config_file="${SSHFS_CONFIG:-$_ssh_vpn_reminder_dir/sshfs-conf.json}"
+  local config_file="$_ssh_vpn_reminder_dir/sshfs-conf.json"
   local match=""
 
   [[ "$PWD" != "$_ssh_vpn_reminder_last_pwd" ]] || return 0

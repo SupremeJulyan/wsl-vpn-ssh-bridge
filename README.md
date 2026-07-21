@@ -34,9 +34,11 @@ autoProxy=true
 
 ## SSH
 
-`ssh-config.json` 可按名称保存 SSH 连接信息，字段与 `sshfs-conf.json` 中的连接字段一致：
+`ssh-conf.json` 可按名称保存 SSH 连接信息，字段与 `sshfs-conf.json` 中的连接字段一致：
 
 ```bash
+./ssh-vpn.sh config
+./ssh-vpn.sh list
 ./ssh-vpn.sh gkn_zy
 ./ssh-vpn.sh user@10.0.0.10
 ./ssh-vpn.sh user@10.0.0.10 hostname
@@ -44,7 +46,16 @@ VPN_TARGET_PORT=22022 ./ssh-vpn.sh user@10.0.0.10
 ```
 
 配置可包含 `name`、`ip`、`user`、`port`、`vpn`、`private_key_path` 和 `password`。
-推荐使用私钥；配置密码时需安装 `sshpass`。可通过 `SSH_CONFIG` 指定其他配置文件。
+推荐使用私钥；配置密码时需安装 `sshpass`。
+
+首次运行 `./ssh-vpn.sh config` 可在终端中交互创建 `ssh-conf.json`。`port` 默认 `22`，`vpn`
+默认 `true`，`encrypt_passwords` 始终自动设为 `true`。密码输入不会回显，保存前即加密，不会先把
+明文写入 JSON。配置文件已经存在时，`config` 与 `list` 行为相同，只列出已有配置。
+
+若必须使用密码，可在配置顶层加入 `"encrypt_passwords": true`。当 `password` 还是明文时，
+第一次执行 `ssh-vpn.sh name` 会要求设置加密口令，并把密码原子替换为 `enc:v1:...` 密文；
+以后连接时输入该口令即可。也可通过 `WSL_VPN_MASTER_PASSWORD` 提供口令（注意环境变量可能被
+同一用户的其他进程读取，不如交互输入安全）。加密依赖 `openssl`，忘记口令后无法恢复密码。
 
 在 Bash 中启用挂载目录登录提醒：
 
@@ -65,20 +76,28 @@ cp sshfs-conf.example.json sshfs-conf.json
 
 推荐使用 `private_key_path`，不要把密码写入配置或提交到 Git。
 
+`sshfs-conf.json` 同样支持顶层的 `"encrypt_passwords": true`。首次 `mount` 会加密并回写仍为
+明文的密码；`list`、`status` 和 `unmount` 不会读取或要求输入加密口令。
+
+首次运行 `./sshfs-vpn.sh config` 可交互填写连接字段、远程目录和本地挂载目录，并创建固定的
+`sshfs-conf.json`；端口、VPN 和加密默认值与 SSH 向导相同。文件存在时，`config` 等同于 `list`。
+
 ```bash
+./sshfs-vpn.sh config
+
 # 挂载第一项
-./sshfs.sh mount
+./sshfs-vpn.sh mount
 
 # 挂载全部
-./sshfs.sh mount -all
+./sshfs-vpn.sh mount -all
 
 # 挂载或卸载指定项
-./sshfs.sh mount example
-./sshfs.sh unmount example
+./sshfs-vpn.sh mount example
+./sshfs-vpn.sh unmount example
 
 # 查看状态或卸载全部
-./sshfs.sh status
-./sshfs.sh unmount
+./sshfs-vpn.sh status
+./sshfs-vpn.sh unmount
 ```
 
 配置字段 `vpn: true` 表示通过 Windows VPN 中继连接；设为 `false` 时直接连接目标。旧字段 `atrust: true` 仍兼容。
