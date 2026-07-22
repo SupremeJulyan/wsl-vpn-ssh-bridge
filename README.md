@@ -77,6 +77,9 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 配置可包含 `name`、`ip`、`user`、`port`、`vpn`、`private_key_path` 和 `password`。
 推荐使用私钥；配置密码时需安装 `sshpass`。
 
+首次连接新主机时，`ssh-vpn` 会自动接受主机密钥并写入 `~/.ssh/known_hosts`，无需手动输入
+`yes`。如果已保存主机的密钥发生变化，SSH 仍会拒绝连接并显示安全警告。
+
 首次运行 `ssh-vpn config` 可在终端中交互创建 `ssh-conf.json`。`port` 默认 `22`，`vpn`
 默认 `true`，`encrypt_passwords` 始终自动设为 `true`。密码输入不会回显，保存前即加密，不会先把
 明文写入 JSON。配置文件已经存在时，`config` 会打开终端菜单：先用方向键和回车选择配置名，

@@ -167,7 +167,9 @@ target_port="${VPN_TARGET_PORT:-$target_port}"
   && ((target_port >= 1 && target_port <= 65535)) \
   || die "SSH 端口必须是 1-65535 的整数"
 
-ssh_options=()
+# Automatically trust a host key only when the destination has no existing
+# known_hosts entry. OpenSSH will still reject changed keys.
+ssh_options=(-o StrictHostKeyChecking=accept-new)
 if [[ -n "$private_key_path" ]]; then
   [[ -r "$private_key_path" ]] || die "私钥不可读: $private_key_path"
   ssh_options+=(-i "$private_key_path")
