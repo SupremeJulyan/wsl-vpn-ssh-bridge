@@ -97,6 +97,11 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 安装程序会在 Bash 中启用挂载目录登录提醒；进入 SSHFS 挂载目录时会提示对应的
 `ssh-vpn name` 命令。
 
+如果 SSH 与 SSHFS 配置使用相同的 `name`，在挂载目录或其子目录中执行不带远程命令的
+`ssh-vpn name`，登录后会自动进入映射的远程目录。例如本地挂载点是
+`/home/julyan/project/node37`、远程目录是 `/home/zhuyuan`，从本地 `node37/test` 执行
+`ssh-vpn node37` 后会进入远程 `/home/zhuyuan/test`。显式传入远程命令时不会自动切换目录。
+
 ## SSHFS
 
 推荐使用 `private_key_path`，不要把密码写入配置或提交到 Git。

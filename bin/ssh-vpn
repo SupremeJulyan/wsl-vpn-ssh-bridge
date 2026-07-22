@@ -36,6 +36,7 @@ script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"
 install_root="$(cd -- "$script_dir/.." && pwd)"
 config_dir="${HOME:?}/.wsl-vpn-ssh"
 config_file="$config_dir/ssh-conf.json"
+sshfs_config_file="$config_dir/sshfs-conf.json"
 
 if [[ "$1" == config ]]; then
   [[ $# -eq 1 ]] || die "config 不接受其他参数"
@@ -84,6 +85,7 @@ fi
 
 requested_destination="$1"
 shift
+remote_args=("$@")
 
 for command in ssh python3; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令 '$command'"
@@ -161,6 +163,55 @@ else
 fi
 target_port="${VPN_TARGET_PORT:-$target_port}"
 
+# When an interactive login starts inside the matching SSHFS mount, enter the
+# corresponding remote subdirectory. Explicit remote commands retain their
+# existing behavior.
+if ((${#remote_args[@]} == 0)) && [[ -r "$sshfs_config_file" ]]; then
+  remote_start_command="$(python3 - "$sshfs_config_file" "$requested_destination" "$PWD" <<'PY'
+import json, os, shlex, sys
+
+config_path, selected, current_dir = sys.argv[1:]
+try:
+    with open(config_path, encoding="utf-8") as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(0)
+
+if isinstance(data, dict) and "mounts" in data:
+    entries = data["mounts"]
+elif isinstance(data, list):
+    entries = data
+elif isinstance(data, dict):
+    entries = [data]
+else:
+    entries = []
+
+current_dir = os.path.realpath(current_dir)
+for item in entries:
+    if not isinstance(item, dict) or str(item.get("name", "")) != selected:
+        continue
+    local_path = item.get("local_path")
+    remote_path = item.get("remote_path")
+    if not local_path or not remote_path:
+        continue
+    local_path = os.path.realpath(os.path.expanduser(str(local_path)))
+    try:
+        relative_path = os.path.relpath(current_dir, local_path)
+    except ValueError:
+        continue
+    if relative_path == os.pardir or relative_path.startswith(os.pardir + os.sep):
+        continue
+    destination = os.path.normpath(os.path.join(str(remote_path), relative_path))
+    print(f"cd -- {shlex.quote(destination)} && exec \"${{SHELL:-/bin/sh}}\" -l")
+    break
+PY
+  )"
+  if [[ -n "$remote_start_command" ]]; then
+    ssh_options_auto_cd=(-t)
+    remote_args=("$remote_start_command")
+  fi
+fi
+
 [[ -n "$target_host" ]] || die "目标主机不能为空"
 
 [[ "$target_port" =~ ^[0-9]+$ ]] \
@@ -170,6 +221,9 @@ target_port="${VPN_TARGET_PORT:-$target_port}"
 # Automatically trust a host key only when the destination has no existing
 # known_hosts entry. OpenSSH will still reject changed keys.
 ssh_options=(-o StrictHostKeyChecking=accept-new)
+if [[ -n "${ssh_options_auto_cd+x}" ]]; then
+  ssh_options+=("${ssh_options_auto_cd[@]}")
+fi
 if [[ -n "$private_key_path" ]]; then
   [[ -r "$private_key_path" ]] || die "私钥不可读: $private_key_path"
   ssh_options+=(-i "$private_key_path")
@@ -182,7 +236,7 @@ if [[ -n "$password" ]]; then
 fi
 
 if [[ "$use_vpn" != true ]]; then
-  exec "${ssh_command[@]}" "${ssh_options[@]}" -p "$target_port" -- "$local_destination" "$@"
+  exec "${ssh_command[@]}" "${ssh_options[@]}" -p "$target_port" -- "$local_destination" "${remote_args[@]}"
 fi
 
 for command in powershell.exe wslpath flock; do
@@ -211,4 +265,4 @@ fi
   -p "$local_port" \
   -o "HostKeyAlias=$host_key_alias" \
   -o CheckHostIP=no \
-  -- "$tunnel_destination" "$@"
+  -- "$tunnel_destination" "${remote_args[@]}"
