@@ -30,7 +30,7 @@ vpn_secure_pool_dir() {
 vpn_powershell() {
   # Windows interop cannot use an SSHFS/FUSE directory as its inherited cwd.
   # Always launch PowerShell from the local toolkit directory so callers may
-  # run ssh-vpn while their shell is inside a mounted directory.
+  # run ssh-bridge while their shell is inside a mounted directory.
   (cd -- "$VPN_TOOLKIT_DIR" && powershell.exe "$@")
 }
 

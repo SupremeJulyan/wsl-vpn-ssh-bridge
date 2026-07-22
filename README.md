@@ -19,7 +19,7 @@ WSL SSH/SSHFS -> Windows 127.0.0.1 随机端口 -> Windows VPN -> 目标服务�
 ```
 
 程序安装到 `~/.local/share/wsl-vpn-ssh-bridge`，命令链接到 `~/.local/bin`，并自动安装和启动
-用户级 SSHFS 清理服务。重新打开终端后可直接使用 `ssh-vpn` 和 `sshfs-vpn`。
+用户级 SSHFS 清理服务。重新打开终端后可直接使用 `ssh-bridge` 和 `sshfs-bridge`。
 
 配置固定保存在 `~/.wsl-vpn-ssh/config.json`。配置目录权限为 `0700`，文件权限为 `0600`。
 旧的 `ssh-conf.json` 和 `sshfs-conf.json` 不再读取。
@@ -65,21 +65,21 @@ autoProxy=true
 `~/.wsl-vpn-ssh/config.json` 的 `hosts` 数组可按名称保存 SSH 连接信息：
 
 ```bash
-ssh-vpn config
-ssh-vpn list
-ssh-vpn gkn_zy
-ssh-vpn user@10.0.0.10
-ssh-vpn user@10.0.0.10 hostname
-VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
+ssh-bridge config
+ssh-bridge list
+ssh-bridge gkn_zy
+ssh-bridge user@10.0.0.10
+ssh-bridge user@10.0.0.10 hostname
+VPN_TARGET_PORT=22022 ssh-bridge user@10.0.0.10
 ```
 
 配置可包含 `name`、`ip`、`user`、`port`、`vpn`、`private_key_path` 和 `password`。
 推荐使用私钥；配置密码时需安装 `sshpass`。
 
-首次连接新主机时，`ssh-vpn` 会自动接受主机密钥并写入 `~/.ssh/known_hosts`，无需手动输入
+首次连接新主机时，`ssh-bridge` 会自动接受主机密钥并写入 `~/.ssh/known_hosts`，无需手动输入
 `yes`。如果已保存主机的密钥发生变化，SSH 仍会拒绝连接并显示安全警告。
 
-首次运行 `ssh-vpn config` 可在终端中交互创建 `config.json`。`port` 默认 `22`，`vpn`
+首次运行 `ssh-bridge config` 可在终端中交互创建 `config.json`。`port` 默认 `22`，`vpn`
 默认 `true`，`encrypt_passwords` 始终自动设为 `true`。密码输入不会回显，保存前即加密，不会先把
 明文写入 JSON。配置文件已经存在时，`config` 会打开终端菜单：先用方向键和回车选择配置名，
 再编辑、保存或删除具体字段；菜单中也可以新增配置。
@@ -92,19 +92,19 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 新密码可替换，输入 `-` 可清除，留空则保留原密码。
 
 向导会自动写入 `"encrypt_passwords": true`。当旧配置中的 `password` 还是明文时，第一次执行
-`ssh-vpn name` 会要求设置加密口令，并把密码原子替换为 `enc:v1:...` 密文；
-主口令会缓存在当前用户的运行时目录中，默认 8 小时内由 `ssh-vpn` 和 `sshfs-vpn` 共用；
+`ssh-bridge name` 会要求设置加密口令，并把密码原子替换为 `enc:v1:...` 密文；
+主口令会缓存在当前用户的运行时目录中，默认 8 小时内由 `ssh-bridge` 和 `sshfs-bridge` 共用；
 WSL 用户会话结束后缓存消失。可通过 `WSL_VPN_PASSWORD_CACHE_TTL` 设置缓存秒数。也可通过
 `WSL_VPN_MASTER_PASSWORD` 提供口令（注意环境变量可能被
 同一用户的其他进程读取，不如交互输入安全）。加密依赖 `openssl`，忘记口令后无法恢复密码。
 
 安装程序会在 Bash 中启用挂载目录终端集成；`remote_terminal` 为 `open` 时，进入挂载目录会
-自动执行其引用的 `ssh-vpn host`。
+自动执行其引用的 `ssh-bridge host`。
 
-在挂载目录或其子目录中执行不带远程命令的 `ssh-vpn host`，登录后会自动进入映射的远程目录。
+在挂载目录或其子目录中执行不带远程命令的 `ssh-bridge host`，登录后会自动进入映射的远程目录。
 例如本地挂载点是
 `/home/julyan/project/node37`、远程目录是 `/home/zhuyuan`，从本地 `node37/test` 执行
-`ssh-vpn node37` 后会进入远程 `/home/zhuyuan/test`。显式传入远程命令时不会自动切换目录。
+`ssh-bridge node37` 后会进入远程 `/home/zhuyuan/test`。显式传入远程命令时不会自动切换目录。
 
 ## SSHFS
 
@@ -114,45 +114,45 @@ WSL 用户会话结束后缓存消失。可通过 `WSL_VPN_PASSWORD_CACHE_TTL` �
 首次连接会加密并回写仍为明文的 host 密码；`list`、`status` 和 `unmount` 不会读取或要求输入
 加密口令。
 
-首次运行 `sshfs-vpn config` 可交互填写引用的 SSH 配置名、远程目录和本地挂载目录，并写入
+首次运行 `sshfs-bridge config` 可交互填写引用的 SSH 配置名、远程目录和本地挂载目录，并写入
 同一个 `config.json`。文件存在时，`config` 会打开相同的
-终端配置编辑菜单。本地挂载目录默认是运行 `sshfs-vpn config` 时所在的当前目录下与配置名称
+终端配置编辑菜单。本地挂载目录默认是运行 `sshfs-bridge config` 时所在的当前目录下与配置名称
 同名的子目录；例如在 `~/work` 创建名称 `server-a`，会立即创建并保存绝对路径
-`~/work/server-a`。手动填写相对路径时，则以执行 `sshfs-vpn` 时的当前目录为基准。
+`~/work/server-a`。手动填写相对路径时，则以执行 `sshfs-bridge` 时的当前目录为基准。
 
 每个挂载项可用 `remote_terminal` 控制远程终端行为：
 
-- `now`：配置时不要求填写 `local_path`；执行 `sshfs-vpn mount name` 时直接挂载到当前目录，
+- `now`：配置时不要求填写 `local_path`；执行 `sshfs-bridge mount name` 时直接挂载到当前目录，
   成功后把该目录的绝对路径写入 `local_path`，供后续 `status/unmount` 使用，然后自动通过
-  `ssh-vpn name` 打开远程终端并进入配置的远程目录。也可以单独执行 `ssh-vpn name`
+  `ssh-bridge name` 打开远程终端并进入配置的远程目录。也可以单独执行 `ssh-bridge name`
   进入远程目录。
 - `open`（默认，兼容旧配置）：使用配置的挂载目录；从该目录或其子目录执行
-  新的 Bash 提示符时自动执行 `ssh-vpn name`，并进入对应的远程目录或子目录；退出远程终端后
+  新的 Bash 提示符时自动执行 `ssh-bridge name`，并进入对应的远程目录或子目录；退出远程终端后
   返回本地目录。同一目录不会连续重复触发。
 - `never`：不自动处理远程终端目录。
 
 ```bash
-sshfs-vpn config
+sshfs-bridge config
 
 # 挂载第一项
-sshfs-vpn mount
+sshfs-bridge mount
 
 # 挂载全部
-sshfs-vpn mount -all
+sshfs-bridge mount -all
 
 # 挂载或卸载指定项
-sshfs-vpn mount example
-sshfs-vpn unmount example
+sshfs-bridge mount example
+sshfs-bridge unmount example
 
 # 查看状态或卸载全部
-sshfs-vpn status
-sshfs-vpn unmount
+sshfs-bridge status
+sshfs-bridge unmount
 ```
 
 连接失败时可启用详细日志（不会输出密码）：
 
 ```bash
-SSHFS_VPN_DEBUG=1 sshfs-vpn mount example
+SSHFS_BRIDGE_DEBUG=1 sshfs-bridge mount example
 ```
 
 配置字段 `vpn: true` 表示通过 Windows VPN 中继连接；设为 `false` 时直接连接目标。旧字段 `atrust: true` 仍兼容。
@@ -163,7 +163,7 @@ WSL 正常关闭时，用户级 systemd 服务会解除全部 SSHFS 挂载；意
 
 ```bash
 ~/.local/share/wsl-vpn-ssh-bridge/systemd/install-user-service.sh
-systemctl --user status sshfs-vpn-cleanup.service
+systemctl --user status sshfs-bridge-cleanup.service
 ```
 
 <!-- ## 安全说明

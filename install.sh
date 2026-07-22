@@ -24,13 +24,13 @@ mkdir -p -- \
 chmod 700 "$config_dir"
 
 scripts=(
-  bin/ssh-vpn bin/sshfs-vpn systemd/install-user-service.sh
+  bin/ssh-bridge bin/sshfs-bridge systemd/install-user-service.sh
 )
 helpers=(
   lib/config_wizard.py lib/config_editor.py lib/password_crypto.py
   libexec/vpn-relay-pool.sh libexec/start-vpn-relay.ps1
-  libexec/windows_tcp_relay.py shell/ssh-vpn-reminder.sh
-  systemd/sshfs-vpn-cleanup.service.in
+  libexec/windows_tcp_relay.py shell/ssh-bridge-reminder.sh
+  systemd/sshfs-bridge-cleanup.service.in
 )
 [[ -r "$source_dir/uninstall.sh" ]] || die "安装文件缺失: uninstall.sh"
 install -m 755 -- "$source_dir/uninstall.sh" "$install_dir/uninstall.sh"
@@ -43,23 +43,37 @@ for file in "${helpers[@]}"; do
   install -m 644 -- "$source_dir/$file" "$install_dir/$file"
 done
 
-for name in ssh-vpn sshfs-vpn; do
+# Remove command and script names from releases before the bridge rename.
+for legacy_name in ssh-vpn sshfs-vpn; do
+  legacy_link="$bin_dir/$legacy_name"
+  if [[ -L "$legacy_link" ]]; then
+    legacy_target="$(readlink -f -- "$legacy_link" 2>/dev/null || true)"
+    case "$legacy_target" in
+      "$install_dir"/*) rm -f -- "$legacy_link" ;;
+    esac
+  fi
+done
+rm -f -- "$install_dir/bin/ssh-vpn" "$install_dir/bin/sshfs-vpn" \
+  "$install_dir/shell/ssh-vpn-reminder.sh" \
+  "$install_dir/systemd/sshfs-vpn-cleanup.service.in"
+
+for name in ssh-bridge sshfs-bridge; do
   target="$bin_dir/$name"
   if [[ -e "$target" && ! -L "$target" ]]; then
     die "不会覆盖已有文件: $target"
   fi
 done
-ln -sfn -- "$install_dir/bin/ssh-vpn" "$bin_dir/ssh-vpn"
-ln -sfn -- "$install_dir/bin/sshfs-vpn" "$bin_dir/sshfs-vpn"
+ln -sfn -- "$install_dir/bin/ssh-bridge" "$bin_dir/ssh-bridge"
+ln -sfn -- "$install_dir/bin/sshfs-bridge" "$bin_dir/sshfs-bridge"
 
 path_line='export PATH="$HOME/.local/bin:$PATH"'
 if [[ ":$PATH:" != *":$bin_dir:"* ]] && ! grep -Fqx "$path_line" "$bashrc" 2>/dev/null; then
   printf '\n# wsl-vpn-ssh-bridge\n%s\n' "$path_line" >>"$bashrc"
 fi
-reminder_line="source \"$install_dir/shell/ssh-vpn-reminder.sh\""
+reminder_line="source \"$install_dir/shell/ssh-bridge-reminder.sh\""
 # Remove reminder paths written by older layouts, then add the current path once.
 if [[ -f "$bashrc" ]]; then
-  sed -i '\|ssh-vpn-reminder\.sh|d' "$bashrc"
+  sed -i -e '\|ssh-bridge-reminder\.sh|d' -e '\|ssh-vpn-reminder\.sh|d' "$bashrc"
 fi
 printf '%s\n' "$reminder_line" >>"$bashrc"
 
@@ -72,7 +86,7 @@ else
 fi
 
 printf '\n安装完成。配置目录: %s\n' "$config_dir"
-printf '重新打开终端后可直接使用: ssh-vpn / sshfs-vpn\n'
+printf '重新打开终端后可直接使用: ssh-bridge / sshfs-bridge\n'
 if [[ ":$PATH:" != *":$bin_dir:"* ]]; then
   printf '当前终端立即生效: export PATH="%s:$PATH"\n' "$bin_dir"
 fi

@@ -26,7 +26,8 @@ bin_dir="${HOME:?}/.local/bin"
 config_dir="${HOME:?}/.wsl-vpn-ssh"
 bashrc="${HOME:?}/.bashrc"
 user_unit_dir="${XDG_CONFIG_HOME:-${HOME:?}/.config}/systemd/user"
-unit="$user_unit_dir/sshfs-vpn-cleanup.service"
+unit="$user_unit_dir/sshfs-bridge-cleanup.service"
+legacy_unit="$user_unit_dir/sshfs-vpn-cleanup.service"
 
 if [[ "$purge" == ask ]]; then
   if [[ -t 0 ]]; then
@@ -47,16 +48,20 @@ case "$install_dir" in
   *) printf '错误: 拒绝删除异常安装目录: %s\n' "$install_dir" >&2; exit 1 ;;
 esac
 
-if [[ -x "$install_dir/bin/sshfs-vpn" && -r "$config_dir/config.json" ]]; then
-  "$install_dir/bin/sshfs-vpn" unmount \
+if [[ -x "$install_dir/bin/sshfs-bridge" && -r "$config_dir/config.json" ]]; then
+  "$install_dir/bin/sshfs-bridge" unmount \
     || { printf '错误: SSHFS 挂载目录解除失败，已取消卸载\n' >&2; exit 1; }
 fi
 
 if [[ "${WSL_VPN_SKIP_SERVICE:-0}" != 1 ]] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --user disable --now sshfs-bridge-cleanup.service >/dev/null 2>&1 || true
   systemctl --user disable --now sshfs-vpn-cleanup.service >/dev/null 2>&1 || true
 fi
 if [[ -f "$unit" ]]; then
   rm -f -- "$unit"
+fi
+if [[ -f "$legacy_unit" ]]; then
+  rm -f -- "$legacy_unit"
 fi
 if [[ "${WSL_VPN_SKIP_SERVICE:-0}" != 1 ]] && command -v systemctl >/dev/null 2>&1; then
   systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -72,7 +77,7 @@ if [[ "$purge" == yes && -d "$config_dir" ]]; then
   rm -rf -- "$config_dir"
 fi
 
-for name in ssh-vpn sshfs-vpn; do
+for name in ssh-bridge sshfs-bridge ssh-vpn sshfs-vpn; do
   link="$bin_dir/$name"
   if [[ -L "$link" ]]; then
     target="$(readlink -f -- "$link" 2>/dev/null || true)"
@@ -84,7 +89,8 @@ for name in ssh-vpn sshfs-vpn; do
 done
 
 if [[ -f "$bashrc" ]]; then
-  sed -i '\|wsl-vpn-ssh-bridge.*/ssh-vpn-reminder\.sh|d' "$bashrc"
+  sed -i -e '\|wsl-vpn-ssh-bridge.*/ssh-bridge-reminder\.sh|d' \
+    -e '\|wsl-vpn-ssh-bridge.*/ssh-vpn-reminder\.sh|d' "$bashrc"
 fi
 
 if [[ -d "$install_dir" ]]; then

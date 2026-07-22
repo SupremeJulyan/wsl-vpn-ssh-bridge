@@ -5,16 +5,16 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 用法:
-  ssh-vpn -h | --help
-  ssh-vpn config                    创建或编辑配置
-  ssh-vpn list
-  ssh-vpn name [远程命令...]
-  ssh-vpn user@host [远程命令...]
+  ssh-bridge -h | --help
+  ssh-bridge config                    创建或编辑配置
+  ssh-bridge list
+  ssh-bridge name [远程命令...]
+  ssh-bridge user@host [远程命令...]
 
 示例:
-  ssh-vpn example
-  ssh-vpn alice@10.0.0.10
-  ssh-vpn alice@10.0.0.10 uname -a
+  ssh-bridge example
+  ssh-bridge alice@10.0.0.10
+  ssh-bridge alice@10.0.0.10 uname -a
 
 环境变量:
   VPN_TARGET_PORT=22   目标 SSH 端口
@@ -171,8 +171,8 @@ if ((${#remote_args[@]} == 0)) && [[ -r "$sshfs_config_file" ]]; then
 import json, os, shlex, sys
 
 config_path, selected, current_dir = sys.argv[1:]
-mount_selected = os.environ.get("SSH_VPN_MOUNT_NAME", selected)
-explicit_mount = "SSH_VPN_MOUNT_NAME" in os.environ
+mount_selected = os.environ.get("SSH_BRIDGE_MOUNT_NAME", selected)
+explicit_mount = "SSH_BRIDGE_MOUNT_NAME" in os.environ
 try:
     with open(config_path, encoding="utf-8") as f:
         data = json.load(f)

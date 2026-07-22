@@ -53,8 +53,8 @@ PY
     # Record the match before SSH starts so returning to the same local prompt
     # does not immediately open another session.
     _ssh_vpn_reminder_last_name="$mount_name"
-    printf '\033[33m正在进入远程终端：ssh-vpn %s\033[0m\n' "$host_name"
-    SSH_VPN_MOUNT_NAME="$mount_name" command ssh-vpn "$host_name"
+    printf '\033[33m正在进入远程终端：ssh-bridge %s\033[0m\n' "$host_name"
+    SSH_BRIDGE_MOUNT_NAME="$mount_name" command ssh-bridge "$host_name"
     return $?
   fi
   _ssh_vpn_reminder_last_name="$mount_name"

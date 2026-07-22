@@ -12,14 +12,14 @@ source "$INSTALL_ROOT/libexec/vpn-relay-pool.sh"
 usage() {
   cat <<'EOF'
 用法:
-  sshfs-vpn -h | --help
-  sshfs-vpn config          交互创建配置或列出已有配置
-  sshfs-vpn mount           挂载配置中的第一项
-  sshfs-vpn mount -all      挂载全部配置项
-  sshfs-vpn mount [name]    挂载指定配置项
-  sshfs-vpn unmount [name]  卸载指定项；省略 name 时卸载全部
-  sshfs-vpn status [name]   查看挂载状态
-  sshfs-vpn list            列出配置项
+  sshfs-bridge -h | --help
+  sshfs-bridge config          交互创建配置或列出已有配置
+  sshfs-bridge mount           挂载配置中的第一项
+  sshfs-bridge mount -all      挂载全部配置项
+  sshfs-bridge mount [name]    挂载指定配置项
+  sshfs-bridge unmount [name]  卸载指定项；省略 name 时卸载全部
+  sshfs-bridge status [name]   查看挂载状态
+  sshfs-bridge list            列出配置项
 
 EOF
 }
@@ -230,7 +230,7 @@ mount_one() {
     [[ -r "$key" ]] || die "[$name] 私钥不可读: $key"
     options+=(-o "IdentityFile=$key")
   fi
-  if [[ "${SSHFS_VPN_DEBUG:-0}" == 1 ]]; then
+  if [[ "${SSHFS_BRIDGE_DEBUG:-0}" == 1 ]]; then
     options+=(-f -d -o sshfs_debug -o LogLevel=DEBUG3)
     printf '[%s] 已启用 SSHFS 调试日志（不会输出密码）\n' "$name" >&2
   fi
@@ -348,12 +348,12 @@ main() {
 
   # A named now mount is a complete workflow: mount into the invocation
   # directory, then replace this process with the matching interactive SSH
-  # session. ssh-vpn uses remote_terminal=now to cd to remote_path.
+  # session. ssh-bridge uses remote_terminal=now to cd to remote_path.
   if [[ "$enter_remote_terminal" == true ]]; then
     rm -f -- "$entries_file"
     trap - EXIT
-    export SSH_VPN_MOUNT_NAME="$selected"
-    exec "$SCRIPT_DIR/ssh-vpn" "$host_name"
+    export SSH_BRIDGE_MOUNT_NAME="$selected"
+    exec "$SCRIPT_DIR/ssh-bridge" "$host_name"
   fi
 }
 

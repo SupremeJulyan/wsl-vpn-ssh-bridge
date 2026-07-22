@@ -101,7 +101,7 @@ def main():
         entry["remote_path"] = required("远程目录: ")
         entry["remote_terminal"] = remote_terminal_value()
         if entry["remote_terminal"] == "now":
-            print("提示：now 模式不预设挂载目录；执行 sshfs-vpn mount 配置名时会挂载到当前目录。")
+            print("提示：now 模式不预设挂载目录；执行 sshfs-bridge mount 配置名时会挂载到当前目录。")
         else:
             local_default = os.path.join(os.getcwd(), entry["name"])
             entry["local_path"] = input(f"本地挂载目录 [{local_default}]: ").strip() or local_default
@@ -118,7 +118,7 @@ def main():
     if args.kind == "sshfs" and not any(
             isinstance(item, dict) and item.get("name") == entry["host"]
             for item in data["hosts"]):
-        raise SystemExit(f"SSH 配置不存在: {entry['host']}；请先运行 ssh-vpn config")
+        raise SystemExit(f"SSH 配置不存在: {entry['host']}；请先运行 ssh-bridge config")
     entries = data[collection]
     existing = next((i for i, item in enumerate(entries)
                      if isinstance(item, dict) and item.get("name") == entry["name"]), None)
