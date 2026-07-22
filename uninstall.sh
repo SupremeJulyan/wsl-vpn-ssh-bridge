@@ -47,7 +47,7 @@ case "$install_dir" in
   *) printf '错误: 拒绝删除异常安装目录: %s\n' "$install_dir" >&2; exit 1 ;;
 esac
 
-if [[ -x "$install_dir/bin/sshfs-vpn" && -r "$config_dir/sshfs-conf.json" ]]; then
+if [[ -x "$install_dir/bin/sshfs-vpn" && -r "$config_dir/config.json" ]]; then
   "$install_dir/bin/sshfs-vpn" unmount \
     || { printf '错误: SSHFS 挂载目录解除失败，已取消卸载\n' >&2; exit 1; }
 fi

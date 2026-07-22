@@ -21,9 +21,8 @@ WSL SSH/SSHFS -> Windows 127.0.0.1 随机端口 -> Windows VPN -> 目标服务�
 程序安装到 `~/.local/share/wsl-vpn-ssh-bridge`，命令链接到 `~/.local/bin`，并自动安装和启动
 用户级 SSHFS 清理服务。重新打开终端后可直接使用 `ssh-vpn` 和 `sshfs-vpn`。
 
-配置固定保存在 `~/.wsl-vpn-ssh/ssh-conf.json` 和
-`~/.wsl-vpn-ssh/sshfs-conf.json`。配置目录权限为 `0700`，文件权限为 `0600`。若项目目录存在
-旧配置且目标文件尚不存在，安装程序会复制迁移并保留原文件。
+配置固定保存在 `~/.wsl-vpn-ssh/config.json`。配置目录权限为 `0700`，文件权限为 `0600`。
+旧的 `ssh-conf.json` 和 `sshfs-conf.json` 不再读取。
 
 源码按用途组织：`bin/` 存放命令入口，`lib/` 存放配置与加密模块，`libexec/` 存放 VPN 中继，
 `shell/` 存放终端集成，`systemd/` 存放服务，`examples/` 存放示例。项目根目录只保留安装、
@@ -63,7 +62,7 @@ autoProxy=true
 
 ## SSH
 
-`~/.wsl-vpn-ssh/ssh-conf.json` 可按名称保存 SSH 连接信息：
+`~/.wsl-vpn-ssh/config.json` 的 `hosts` 数组可按名称保存 SSH 连接信息：
 
 ```bash
 ssh-vpn config
@@ -80,10 +79,13 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 首次连接新主机时，`ssh-vpn` 会自动接受主机密钥并写入 `~/.ssh/known_hosts`，无需手动输入
 `yes`。如果已保存主机的密钥发生变化，SSH 仍会拒绝连接并显示安全警告。
 
-首次运行 `ssh-vpn config` 可在终端中交互创建 `ssh-conf.json`。`port` 默认 `22`，`vpn`
+首次运行 `ssh-vpn config` 可在终端中交互创建 `config.json`。`port` 默认 `22`，`vpn`
 默认 `true`，`encrypt_passwords` 始终自动设为 `true`。密码输入不会回显，保存前即加密，不会先把
 明文写入 JSON。配置文件已经存在时，`config` 会打开终端菜单：先用方向键和回车选择配置名，
 再编辑、保存或删除具体字段；菜单中也可以新增配置。
+
+删除 SSH host 时会检查 `mounts` 引用。没有引用时正常删除；存在引用时默认取消，并列出关联的
+挂载配置，只有再次明确确认才会同时删除该 host 和所有关联 mounts。
 
 菜单中使用 `↑`、`↓`、`←`、`→` 选择配置或字段，按 `Enter` 编辑和确认，按 `Esc` 取消。
 编辑 `vpn` 时左右键用于开关，编辑 `port` 时左右键用于增减端口。密码只显示是否已设置；输入
@@ -91,14 +93,16 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 
 向导会自动写入 `"encrypt_passwords": true`。当旧配置中的 `password` 还是明文时，第一次执行
 `ssh-vpn name` 会要求设置加密口令，并把密码原子替换为 `enc:v1:...` 密文；
-以后连接时输入该口令即可。也可通过 `WSL_VPN_MASTER_PASSWORD` 提供口令（注意环境变量可能被
+主口令会缓存在当前用户的运行时目录中，默认 8 小时内由 `ssh-vpn` 和 `sshfs-vpn` 共用；
+WSL 用户会话结束后缓存消失。可通过 `WSL_VPN_PASSWORD_CACHE_TTL` 设置缓存秒数。也可通过
+`WSL_VPN_MASTER_PASSWORD` 提供口令（注意环境变量可能被
 同一用户的其他进程读取，不如交互输入安全）。加密依赖 `openssl`，忘记口令后无法恢复密码。
 
-安装程序会在 Bash 中启用挂载目录登录提醒；进入 SSHFS 挂载目录时会提示对应的
-`ssh-vpn name` 命令。
+安装程序会在 Bash 中启用挂载目录终端集成；`remote_terminal` 为 `open` 时，进入挂载目录会
+自动执行其引用的 `ssh-vpn host`。
 
-如果 SSH 与 SSHFS 配置使用相同的 `name`，在挂载目录或其子目录中执行不带远程命令的
-`ssh-vpn name`，登录后会自动进入映射的远程目录。例如本地挂载点是
+在挂载目录或其子目录中执行不带远程命令的 `ssh-vpn host`，登录后会自动进入映射的远程目录。
+例如本地挂载点是
 `/home/julyan/project/node37`、远程目录是 `/home/zhuyuan`，从本地 `node37/test` 执行
 `ssh-vpn node37` 后会进入远程 `/home/zhuyuan/test`。显式传入远程命令时不会自动切换目录。
 
@@ -106,11 +110,12 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 
 推荐使用 `private_key_path`，不要把密码写入配置或提交到 Git。
 
-`sshfs-conf.json` 同样支持顶层的 `"encrypt_passwords": true`。首次 `mount` 会加密并回写仍为
-明文的密码；`list`、`status` 和 `unmount` 不会读取或要求输入加密口令。
+`mounts` 使用 `host` 字段引用 `hosts` 中的连接，密码只保存在 host 中，不再为 SSHFS 重复保存。
+首次连接会加密并回写仍为明文的 host 密码；`list`、`status` 和 `unmount` 不会读取或要求输入
+加密口令。
 
-首次运行 `sshfs-vpn config` 可交互填写连接字段、远程目录和本地挂载目录，并创建固定的
-`sshfs-conf.json`；端口、VPN 和加密默认值与 SSH 向导相同。文件存在时，`config` 会打开相同的
+首次运行 `sshfs-vpn config` 可交互填写引用的 SSH 配置名、远程目录和本地挂载目录，并写入
+同一个 `config.json`。文件存在时，`config` 会打开相同的
 终端配置编辑菜单。本地挂载目录默认是运行 `sshfs-vpn config` 时所在的当前目录下与配置名称
 同名的子目录；例如在 `~/work` 创建名称 `server-a`，会立即创建并保存绝对路径
 `~/work/server-a`。手动填写相对路径时，则以执行 `sshfs-vpn` 时的当前目录为基准。
@@ -171,5 +176,5 @@ systemctl --user status sshfs-vpn-cleanup.service
 - 首次 SSHFS 连接使用 `StrictHostKeyChecking=accept-new`；之后主机密钥变化会被拒绝。
 - SSHFS 对非 22 端口使用 `[ip]:port` 作为主机密钥别名，避免同一 IP 上不同 SSH 服务共用或
   冲突主机密钥。
-- 私钥、密码和真实 `sshfs-conf.json` 不应提交到版本库。
+- 私钥、密码和真实 `config.json` 不应提交到版本库。
 - 当前实现仅支持 TCP，不支持 UDP。 -->

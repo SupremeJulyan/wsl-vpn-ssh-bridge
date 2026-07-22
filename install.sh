@@ -52,14 +52,6 @@ done
 ln -sfn -- "$install_dir/bin/ssh-vpn" "$bin_dir/ssh-vpn"
 ln -sfn -- "$install_dir/bin/sshfs-vpn" "$bin_dir/sshfs-vpn"
 
-# Migrate legacy project-local configs without deleting the originals.
-for file in ssh-conf.json sshfs-conf.json; do
-  if [[ -r "$source_dir/$file" && ! -e "$config_dir/$file" ]]; then
-    install -m 600 -- "$source_dir/$file" "$config_dir/$file"
-    printf '已迁移配置: %s\n' "$config_dir/$file"
-  fi
-done
-
 path_line='export PATH="$HOME/.local/bin:$PATH"'
 if [[ ":$PATH:" != *":$bin_dir:"* ]] && ! grep -Fqx "$path_line" "$bashrc" 2>/dev/null; then
   printf '\n# wsl-vpn-ssh-bridge\n%s\n' "$path_line" >>"$bashrc"

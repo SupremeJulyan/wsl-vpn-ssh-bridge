@@ -16,6 +16,60 @@ import tempfile
 
 PREFIX = "enc:v1:"
 ENV_NAME = "WSL_VPN_MASTER_PASSWORD"
+CACHE_TTL_NAME = "WSL_VPN_PASSWORD_CACHE_TTL"
+DEFAULT_CACHE_TTL = 8 * 60 * 60
+
+
+def cache_path():
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    if not os.path.isdir(runtime) or os.stat(runtime).st_uid != os.getuid():
+        runtime = os.path.join(tempfile.gettempdir(), f"wsl-vpn-ssh-{os.getuid()}")
+        os.makedirs(runtime, mode=0o700, exist_ok=True)
+        if os.stat(runtime).st_uid != os.getuid():
+            raise SystemExit("口令缓存目录不属于当前用户")
+        os.chmod(runtime, 0o700)
+    return os.path.join(runtime, "wsl-vpn-ssh-master-password")
+
+
+def cached_password():
+    path = cache_path()
+    try:
+        stat = os.stat(path)
+        ttl = int(os.environ.get(CACHE_TTL_NAME, DEFAULT_CACHE_TTL))
+        if stat.st_uid != os.getuid() or stat.st_mode & 0o077 or ttl <= 0:
+            return None
+        if __import__("time").time() - stat.st_mtime > ttl:
+            os.unlink(path)
+            return None
+        with open(path, encoding="utf-8") as stream:
+            return stream.read()
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def cache_password(value):
+    path = cache_path()
+    directory = os.path.dirname(path)
+    fd, temporary = tempfile.mkstemp(prefix=".master-", dir=directory)
+    try:
+        os.write(fd, value.encode())
+        os.fsync(fd)
+        os.close(fd)
+        fd = -1
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def clear_cached_password():
+    try:
+        os.unlink(cache_path())
+    except FileNotFoundError:
+        pass
 
 
 def master_password(confirm=False):
@@ -23,6 +77,9 @@ def master_password(confirm=False):
     if value is not None:
         if not value:
             raise SystemExit(f"{ENV_NAME} 不能为空")
+        return value
+    value = cached_password()
+    if value:
         return value
     if not sys.stdin.isatty() and not os.path.exists("/dev/tty"):
         raise SystemExit(f"无法交互读取加密口令；请设置 {ENV_NAME}")
@@ -32,6 +89,7 @@ def master_password(confirm=False):
         raise SystemExit("加密口令不能为空")
     if confirm and value != getpass.getpass("请再次输入加密口令: "):
         raise SystemExit("两次输入的加密口令不一致")
+    cache_password(value)
     return value
 
 
@@ -133,7 +191,15 @@ def main():
     if not value:
         return
     if value.startswith(PREFIX):
-        sys.stdout.write(decrypt(value, master_password()))
+        password = master_password()
+        try:
+            plain = decrypt(value, password)
+        except SystemExit:
+            if os.environ.get(ENV_NAME) is not None:
+                raise
+            clear_cached_password()
+            plain = decrypt(value, master_password())
+        sys.stdout.write(plain)
     elif enabled:
         password = master_password(confirm=True)
         entry["password"] = encrypt(value, password)

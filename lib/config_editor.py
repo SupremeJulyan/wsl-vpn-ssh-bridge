@@ -6,7 +6,7 @@ import curses
 import os
 
 from config_wizard import load_config, save_config
-from password_crypto import PREFIX, encrypt
+from password_crypto import PREFIX, cache_password, encrypt
 
 
 KEY_UP = (curses.KEY_UP, curses.KEY_LEFT, ord("k"), ord("h"))
@@ -58,6 +58,7 @@ def master_secret(screen):
     if first != second:
         text_input(screen, "两次口令不一致，按回车继续")
         return None
+    cache_password(first)
     return first
 
 
@@ -67,7 +68,8 @@ def edit_entry(screen, kind, original):
         entry.setdefault("remote_terminal", "open")
     pending_password = None
     labels = {
-        "name": "配置名称", "ip": "服务器 IP/主机名", "user": "用户名",
+        "name": "配置名称", "host": "SSH 配置名称",
+        "ip": "服务器 IP/主机名", "user": "用户名",
         "password": "密码", "private_key_path": "私钥路径",
         "remote_path": "远程目录", "local_path": "本地挂载目录",
         "remote_terminal": "远程终端方式",
@@ -75,12 +77,16 @@ def edit_entry(screen, kind, original):
     }
     selected = 0
     while True:
-        fields = ["name", "ip", "user", "password", "private_key_path"]
+        if kind == "ssh":
+            fields = ["name", "ip", "user", "password", "private_key_path"]
+        else:
+            fields = ["name", "host"]
         if kind == "sshfs":
             fields += ["remote_path", "remote_terminal"]
             if entry.get("remote_terminal") != "now":
                 fields.append("local_path")
-        fields += ["port", "vpn"]
+        if kind == "ssh":
+            fields += ["port", "vpn"]
         selected = min(selected, len(fields) + 2)
         rows = []
         for field in fields:
@@ -146,7 +152,8 @@ def edit_entry(screen, kind, original):
                         else:
                             entry[field] = value.strip()
             elif selected == len(fields):
-                required = ["name", "ip", "user"] + (["remote_path"] if kind == "sshfs" else [])
+                required = (["name", "ip", "user"] if kind == "ssh"
+                            else ["name", "host", "remote_path"])
                 missing = [labels[field] for field in required if not entry.get(field)]
                 if missing:
                     text_input(screen, f"必填项为空: {', '.join(missing)}；按回车继续")
@@ -163,8 +170,9 @@ def edit_entry(screen, kind, original):
                     if secret is None:
                         continue
                     entry["password"] = encrypt(str(entry["password"]), secret)
-                entry.setdefault("port", 22)
-                entry.setdefault("vpn", True)
+                if kind == "ssh":
+                    entry.setdefault("port", 22)
+                    entry.setdefault("vpn", True)
                 if kind == "sshfs" and entry.get("remote_terminal") != "now" and not entry.get("local_path"):
                     entry["local_path"] = os.path.join(os.getcwd(), entry["name"])
                 return "save", entry
@@ -200,6 +208,11 @@ def run(screen, kind, path):
                 original = {} if is_new else entries[selected]
                 action, result = edit_entry(screen, kind, original)
                 if action == "save":
+                    if kind == "sshfs" and not any(
+                            isinstance(item, dict) and item.get("name") == result.get("host")
+                            for item in data["hosts"]):
+                        text_input(screen, "引用的 SSH 配置不存在，按回车继续")
+                        continue
                     duplicate = next((i for i, item in enumerate(entries)
                                       if i != selected and item.get("name") == result["name"]), None)
                     if duplicate is not None:
@@ -214,6 +227,22 @@ def run(screen, kind, path):
                         os.makedirs(os.path.expanduser(result["local_path"]), exist_ok=True)
                     break
                 if action == "delete":
+                    if kind == "ssh":
+                        host_name = str(entries[selected].get("name", ""))
+                        referenced = [item for item in data["mounts"]
+                                      if isinstance(item, dict)
+                                      and str(item.get("host", "")) == host_name]
+                        if referenced:
+                            mount_names = ", ".join(
+                                str(item.get("name") or "<未命名>") for item in referenced)
+                            if not confirm(
+                                    screen,
+                                    f"被挂载配置引用: {mount_names}；是否同时删除"):
+                                text_input(screen, "已取消删除，按回车继续")
+                                continue
+                            data["mounts"] = [item for item in data["mounts"]
+                                              if not (isinstance(item, dict)
+                                                      and str(item.get("host", "")) == host_name)]
                     entries.pop(selected)
                     save_config(path, data)
                     break

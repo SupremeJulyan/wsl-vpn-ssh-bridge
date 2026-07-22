@@ -46,22 +46,18 @@ def remote_terminal_value():
 
 def load_config(path, collection):
     if not os.path.exists(path):
-        return {"encrypt_passwords": True, collection: []}
+        return {"encrypt_passwords": True, "hosts": [], "mounts": []}
     try:
         with open(path, encoding="utf-8") as stream:
             data = json.load(stream)
     except (OSError, json.JSONDecodeError) as error:
         raise SystemExit(f"配置读取失败: {error}")
-    if isinstance(data, list):
-        data = {collection: data}
-    elif isinstance(data, dict) and collection == "mounts" and "mounts" not in data:
-        old_entry = {key: value for key, value in data.items()
-                     if key != "encrypt_passwords"}
-        data = {"encrypt_passwords": data.get("encrypt_passwords", True),
-                "mounts": [old_entry]}
-    if not isinstance(data, dict) or not isinstance(data.get(collection, []), list):
-        raise SystemExit(f"配置文件中的 {collection} 必须是数组")
-    data.setdefault(collection, [])
+    if not isinstance(data, dict):
+        raise SystemExit("配置顶层必须是对象")
+    for key in ("hosts", "mounts"):
+        if not isinstance(data.get(key, []), list):
+            raise SystemExit(f"配置文件中的 {key} 必须是数组")
+        data.setdefault(key, [])
     data["encrypt_passwords"] = True
     return data
 
@@ -89,17 +85,19 @@ def main():
     parser.add_argument("config_dir")
     args = parser.parse_args()
     collection = "hosts" if args.kind == "ssh" else "mounts"
-    default_file = "ssh-conf.json" if args.kind == "ssh" else "sshfs-conf.json"
+    default_file = "config.json"
 
     print(f"创建 {'SSHFS' if args.kind == 'sshfs' else 'SSH'} 配置（Ctrl+C 取消）")
-    entry = {
-        "name": required("配置名称: "),
-        "ip": required("服务器 IP 或主机名: "),
-        "user": required("用户名: "),
-    }
-    plain_password = getpass.getpass("密码（留空则不保存）: ")
-    key = input("私钥路径（留空则不设置）: ").strip()
-    if args.kind == "sshfs":
+    entry = {"name": required("配置名称: ")}
+    plain_password = ""
+    key = ""
+    if args.kind == "ssh":
+        entry["ip"] = required("服务器 IP 或主机名: ")
+        entry["user"] = required("用户名: ")
+        plain_password = getpass.getpass("密码（留空则不保存）: ")
+        key = input("私钥路径（留空则不设置）: ").strip()
+    else:
+        entry["host"] = required("引用的 SSH 配置名称: ")
         entry["remote_path"] = required("远程目录: ")
         entry["remote_terminal"] = remote_terminal_value()
         if entry["remote_terminal"] == "now":
@@ -107,8 +105,9 @@ def main():
         else:
             local_default = os.path.join(os.getcwd(), entry["name"])
             entry["local_path"] = input(f"本地挂载目录 [{local_default}]: ").strip() or local_default
-    entry["port"] = port_value()
-    entry["vpn"] = boolean_value()
+    if args.kind == "ssh":
+        entry["port"] = port_value()
+        entry["vpn"] = boolean_value()
     if key:
         entry["private_key_path"] = key
     path = os.path.join(args.config_dir, default_file)
@@ -116,6 +115,10 @@ def main():
     if plain_password:
         entry["password"] = encrypt(plain_password, master_password(confirm=True))
     data = load_config(path, collection)
+    if args.kind == "sshfs" and not any(
+            isinstance(item, dict) and item.get("name") == entry["host"]
+            for item in data["hosts"]):
+        raise SystemExit(f"SSH 配置不存在: {entry['host']}；请先运行 ssh-vpn config")
     entries = data[collection]
     existing = next((i for i, item in enumerate(entries)
                      if isinstance(item, dict) and item.get("name") == entry["name"]), None)

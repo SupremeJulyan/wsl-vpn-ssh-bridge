@@ -9,8 +9,8 @@ _ssh_vpn_reminder_last_pwd=""
 _ssh_vpn_reminder_last_name=""
 
 _ssh_vpn_reminder() {
-  local config_file="$_ssh_vpn_config_dir/sshfs-conf.json"
-  local match=""
+  local config_file="$_ssh_vpn_config_dir/config.json"
+  local match="" mount_name="" host_name=""
 
   [[ "$PWD" != "$_ssh_vpn_reminder_last_pwd" ]] || return 0
   _ssh_vpn_reminder_last_pwd="$PWD"
@@ -43,20 +43,21 @@ for item in entries:
     except ValueError:
         inside = False
     if inside:
-        print(item["name"])
+        print(f"{item['name']}\t{item.get('host', '')}")
         break
 PY
   )"
+  IFS=$'\t' read -r mount_name host_name <<<"$match"
 
-  if [[ -n "$match" && "$match" != "$_ssh_vpn_reminder_last_name" ]]; then
+  if [[ -n "$mount_name" && -n "$host_name" && "$mount_name" != "$_ssh_vpn_reminder_last_name" ]]; then
     # Record the match before SSH starts so returning to the same local prompt
     # does not immediately open another session.
-    _ssh_vpn_reminder_last_name="$match"
-    printf '\033[33m正在进入远程终端：ssh-vpn %s\033[0m\n' "$match"
-    command ssh-vpn "$match"
+    _ssh_vpn_reminder_last_name="$mount_name"
+    printf '\033[33m正在进入远程终端：ssh-vpn %s\033[0m\n' "$host_name"
+    SSH_VPN_MOUNT_NAME="$mount_name" command ssh-vpn "$host_name"
     return $?
   fi
-  _ssh_vpn_reminder_last_name="$match"
+  _ssh_vpn_reminder_last_name="$mount_name"
 }
 
 case ";${PROMPT_COMMAND:-};" in

@@ -35,8 +35,8 @@ script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
 script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"
 install_root="$(cd -- "$script_dir/.." && pwd)"
 config_dir="${HOME:?}/.wsl-vpn-ssh"
-config_file="$config_dir/ssh-conf.json"
-sshfs_config_file="$config_dir/sshfs-conf.json"
+config_file="$config_dir/config.json"
+sshfs_config_file="$config_file"
 
 if [[ "$1" == config ]]; then
   [[ $# -eq 1 ]] || die "config 不接受其他参数"
@@ -171,6 +171,8 @@ if ((${#remote_args[@]} == 0)) && [[ -r "$sshfs_config_file" ]]; then
 import json, os, shlex, sys
 
 config_path, selected, current_dir = sys.argv[1:]
+mount_selected = os.environ.get("SSH_VPN_MOUNT_NAME", selected)
+explicit_mount = "SSH_VPN_MOUNT_NAME" in os.environ
 try:
     with open(config_path, encoding="utf-8") as f:
         data = json.load(f)
@@ -188,7 +190,11 @@ else:
 
 current_dir = os.path.realpath(current_dir)
 for item in entries:
-    if not isinstance(item, dict) or str(item.get("name", "")) != selected:
+    if not isinstance(item, dict):
+        continue
+    matches_mount = str(item.get("name", "")) == mount_selected
+    matches_host = not explicit_mount and str(item.get("host", "")) == selected
+    if not matches_mount and not matches_host:
         continue
     local_path = item.get("local_path")
     remote_path = item.get("remote_path")

@@ -1,0 +1,22 @@
+{
+  "encrypt_passwords": true,
+  "hosts": [
+    {
+      "name": "server",
+      "ip": "10.0.0.10",
+      "user": "username",
+      "port": 22,
+      "vpn": true,
+      "private_key_path": "~/.ssh/id_ed25519"
+    }
+  ],
+  "mounts": [
+    {
+      "name": "server-example",
+      "host": "server",
+      "remote_path": "/home/username",
+      "remote_terminal": "open",
+      "local_path": "../mnt/example"
+    }
+  ]
+}
