@@ -150,7 +150,7 @@ WSL 正常关闭时，用户级 systemd 服务会解除全部 SSHFS 挂载；意
 systemctl --user status sshfs-vpn-cleanup.service
 ```
 
-## 安全说明
+<!-- ## 安全说明
 
 - 中继仅监听 Windows/WSL 共享的 `127.0.0.1`。
 - 中继状态目录必须属于当前用户，拒绝符号链接，并强制使用 `0700`；状态、锁和租约文件使用
@@ -161,4 +161,4 @@ systemctl --user status sshfs-vpn-cleanup.service
 - SSHFS 对非 22 端口使用 `[ip]:port` 作为主机密钥别名，避免同一 IP 上不同 SSH 服务共用或
   冲突主机密钥。
 - 私钥、密码和真实 `sshfs-conf.json` 不应提交到版本库。
-- 当前实现仅支持 TCP，不支持 UDP。
+- 当前实现仅支持 TCP，不支持 UDP。 -->
