@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Installed into the user's shell startup. It reminds the user how to open an SSH
-# session when entering a local directory configured as an SSHFS mount.
+# Installed into the user's shell startup. For remote_terminal=open, entering an
+# SSHFS mount automatically opens the matching SSH session.
 
 _ssh_vpn_reminder_dir="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 _ssh_vpn_config_dir="${HOME:?}/.wsl-vpn-ssh"
@@ -30,6 +30,8 @@ current_dir = os.path.realpath(current_dir)
 for item in entries:
     if not isinstance(item, dict) or not item.get("name"):
         continue
+    if str(item.get("remote_terminal") or "open").lower() != "open":
+        continue
     local_path = item.get("local_path")
     if not local_path:
         continue
@@ -47,8 +49,12 @@ PY
   )"
 
   if [[ -n "$match" && "$match" != "$_ssh_vpn_reminder_last_name" ]]; then
-    printf '\033[33m提示：这是 SSHFS 挂载目录；登录服务器请使用 ssh-vpn %s\033[0m\n' \
-      "$match"
+    # Record the match before SSH starts so returning to the same local prompt
+    # does not immediately open another session.
+    _ssh_vpn_reminder_last_name="$match"
+    printf '\033[33m正在进入远程终端：ssh-vpn %s\033[0m\n' "$match"
+    command ssh-vpn "$match"
+    return $?
   fi
   _ssh_vpn_reminder_last_name="$match"
 }

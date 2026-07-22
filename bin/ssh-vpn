@@ -192,7 +192,13 @@ for item in entries:
         continue
     local_path = item.get("local_path")
     remote_path = item.get("remote_path")
-    if not local_path or not remote_path:
+    remote_terminal = str(item.get("remote_terminal") or "open").lower()
+    if remote_terminal == "never" or not remote_path:
+        continue
+    if remote_terminal == "now":
+        print(f"cd -- {shlex.quote(str(remote_path))} && exec \"${{SHELL:-/bin/sh}}\" -l")
+        break
+    if remote_terminal != "open" or not local_path:
         continue
     local_path = os.path.realpath(os.path.expanduser(str(local_path)))
     try:

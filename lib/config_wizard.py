@@ -36,6 +36,14 @@ def boolean_value():
         print("请输入 y 或 n")
 
 
+def remote_terminal_value():
+    while True:
+        value = input("远程终端方式 [open]（now/open/never）: ").strip().lower() or "open"
+        if value in ("now", "open", "never"):
+            return value
+        print("请输入 now、open 或 never")
+
+
 def load_config(path, collection):
     if not os.path.exists(path):
         return {"encrypt_passwords": True, collection: []}
@@ -93,8 +101,12 @@ def main():
     key = input("私钥路径（留空则不设置）: ").strip()
     if args.kind == "sshfs":
         entry["remote_path"] = required("远程目录: ")
-        local_default = os.path.join(os.getcwd(), entry["name"])
-        entry["local_path"] = input(f"本地挂载目录 [{local_default}]: ").strip() or local_default
+        entry["remote_terminal"] = remote_terminal_value()
+        if entry["remote_terminal"] == "now":
+            print("提示：now 模式不预设挂载目录；执行 sshfs-vpn mount 配置名时会挂载到当前目录。")
+        else:
+            local_default = os.path.join(os.getcwd(), entry["name"])
+            entry["local_path"] = input(f"本地挂载目录 [{local_default}]: ").strip() or local_default
     entry["port"] = port_value()
     entry["vpn"] = boolean_value()
     if key:
@@ -117,7 +129,7 @@ def main():
         entries[existing] = entry
         action = "更新"
     save_config(path, data)
-    if args.kind == "sshfs":
+    if args.kind == "sshfs" and entry["remote_terminal"] != "now":
         os.makedirs(os.path.expanduser(entry["local_path"]), exist_ok=True)
     print(f"已{action}配置 '{entry['name']}': {path}")
 

@@ -115,6 +115,17 @@ VPN_TARGET_PORT=22022 ssh-vpn user@10.0.0.10
 同名的子目录；例如在 `~/work` 创建名称 `server-a`，会立即创建并保存绝对路径
 `~/work/server-a`。手动填写相对路径时，则以执行 `sshfs-vpn` 时的当前目录为基准。
 
+每个挂载项可用 `remote_terminal` 控制远程终端行为：
+
+- `now`：配置时不要求填写 `local_path`；执行 `sshfs-vpn mount name` 时直接挂载到当前目录，
+  成功后把该目录的绝对路径写入 `local_path`，供后续 `status/unmount` 使用，然后自动通过
+  `ssh-vpn name` 打开远程终端并进入配置的远程目录。也可以单独执行 `ssh-vpn name`
+  进入远程目录。
+- `open`（默认，兼容旧配置）：使用配置的挂载目录；从该目录或其子目录执行
+  新的 Bash 提示符时自动执行 `ssh-vpn name`，并进入对应的远程目录或子目录；退出远程终端后
+  返回本地目录。同一目录不会连续重复触发。
+- `never`：不自动处理远程终端目录。
+
 ```bash
 sshfs-vpn config
 

@@ -6,6 +6,7 @@
       "ip": "10.0.0.10",
       "user": "username",
       "remote_path": "/home/username",
+      "remote_terminal": "open",
       "local_path": "../mnt/example",
       "port": 22,
       "vpn": true,

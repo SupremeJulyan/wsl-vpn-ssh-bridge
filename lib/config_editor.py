@@ -63,19 +63,25 @@ def master_secret(screen):
 
 def edit_entry(screen, kind, original):
     entry = dict(original)
-    pending_password = None
-    fields = ["name", "ip", "user", "password", "private_key_path"]
     if kind == "sshfs":
-        fields += ["remote_path", "local_path"]
-    fields += ["port", "vpn"]
+        entry.setdefault("remote_terminal", "open")
+    pending_password = None
     labels = {
         "name": "配置名称", "ip": "服务器 IP/主机名", "user": "用户名",
         "password": "密码", "private_key_path": "私钥路径",
         "remote_path": "远程目录", "local_path": "本地挂载目录",
+        "remote_terminal": "远程终端方式",
         "port": "SSH 端口", "vpn": "VPN 中继",
     }
     selected = 0
     while True:
+        fields = ["name", "ip", "user", "password", "private_key_path"]
+        if kind == "sshfs":
+            fields += ["remote_path", "remote_terminal"]
+            if entry.get("remote_terminal") != "now":
+                fields.append("local_path")
+        fields += ["port", "vpn"]
+        selected = min(selected, len(fields) + 2)
         rows = []
         for field in fields:
             if field == "password":
@@ -83,6 +89,8 @@ def edit_entry(screen, kind, original):
                 value = "已设置" if current else "未设置"
             elif field == "vpn":
                 value = "开启" if entry.get(field, True) else "关闭"
+            elif field == "remote_terminal" and entry.get(field) == "now":
+                value = "now（挂载到命令执行目录，不保存挂载目录）"
             else:
                 value = str(entry.get(field, ""))
             rows.append(f"{labels[field]:<16} {value}")
@@ -100,6 +108,13 @@ def edit_entry(screen, kind, original):
             field = fields[selected]
             if field == "vpn":
                 entry[field] = not entry.get(field, True)
+            elif field == "remote_terminal":
+                choices = ("now", "open", "never")
+                step = -1 if key == curses.KEY_LEFT else 1
+                current = entry.get(field, "open")
+                entry[field] = choices[(choices.index(current) + step) % len(choices)]
+                if entry[field] == "now":
+                    entry.pop("local_path", None)
             elif field == "port":
                 step = -1 if key == curses.KEY_LEFT else 1
                 entry[field] = min(65535, max(1, int(entry.get(field, 22)) + step))
@@ -108,6 +123,12 @@ def edit_entry(screen, kind, original):
                 field = fields[selected]
                 if field == "vpn":
                     entry[field] = not entry.get(field, True)
+                elif field == "remote_terminal":
+                    choices = ("now", "open", "never")
+                    current = entry.get(field, "open")
+                    entry[field] = choices[(choices.index(current) + 1) % len(choices)]
+                    if entry[field] == "now":
+                        entry.pop("local_path", None)
                 elif field == "password":
                     value = text_input(screen, "输入新密码（留空保留，输入 - 清除）: ", secret=True)
                     if value == "-":
@@ -144,7 +165,7 @@ def edit_entry(screen, kind, original):
                     entry["password"] = encrypt(str(entry["password"]), secret)
                 entry.setdefault("port", 22)
                 entry.setdefault("vpn", True)
-                if kind == "sshfs" and not entry.get("local_path"):
+                if kind == "sshfs" and entry.get("remote_terminal") != "now" and not entry.get("local_path"):
                     entry["local_path"] = os.path.join(os.getcwd(), entry["name"])
                 return "save", entry
             elif selected == len(fields) + 1:
@@ -189,7 +210,7 @@ def run(screen, kind, path):
                     else:
                         entries[selected] = result
                     save_config(path, data)
-                    if kind == "sshfs":
+                    if kind == "sshfs" and result.get("remote_terminal") != "now":
                         os.makedirs(os.path.expanduser(result["local_path"]), exist_ok=True)
                     break
                 if action == "delete":

@@ -61,10 +61,11 @@ fi
 read_entries() {
   local selected="${1:-}"
   local selection_mode="${2:-all}"
-  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$PWD" <<'PY'
+  local action="${3:-list}"
+  python3 - "$CONFIG_FILE" "$selected" "$selection_mode" "$PWD" "$action" <<'PY'
 import json, os, sys
 
-config_path, selected, selection_mode, invocation_dir = sys.argv[1:]
+config_path, selected, selection_mode, invocation_dir, action = sys.argv[1:]
 try:
     with open(config_path, encoding="utf-8") as f:
         data = json.load(f)
@@ -95,7 +96,13 @@ for index, item in enumerate(entries):
     if selection_mode == "named" and name != selected:
         continue
     found = True
-    local_path = item.get("local_path") or os.path.join(invocation_dir, name)
+    remote_terminal = str(item.get("remote_terminal") or "open").lower()
+    if remote_terminal not in ("now", "open", "never"):
+        raise SystemExit(f"配置 '{name}' 的 remote_terminal 必须是 now、open 或 never")
+    if remote_terminal == "now" and selection_mode == "named" and action == "mount":
+        local_path = invocation_dir
+    else:
+        local_path = item.get("local_path") or os.path.join(invocation_dir, name)
     if not os.path.isabs(local_path):
         local_path = os.path.abspath(os.path.join(invocation_dir, local_path))
     values = (
@@ -106,6 +113,7 @@ for index, item in enumerate(entries):
         str(item.get("port") or 22),
         # "atrust" is retained as a compatibility alias for older configs.
         "true" if item.get("vpn", item.get("atrust", False)) else "false",
+        remote_terminal,
     )
     for value in values:
         sys.stdout.buffer.write(value.encode() + b"\0")
@@ -114,6 +122,47 @@ for index, item in enumerate(entries):
 
 if selection_mode == "named" and not found:
     raise SystemExit(f"未找到名为 '{selected}' 的配置")
+PY
+}
+
+persist_now_local_path() {
+  local name="$1" local_path="$2"
+  python3 - "$CONFIG_FILE" "$name" "$local_path" <<'PY'
+import json, os, tempfile, sys
+
+config_path, selected, local_path = sys.argv[1:]
+with open(config_path, encoding="utf-8") as stream:
+    data = json.load(stream)
+
+if isinstance(data, dict) and "mounts" in data:
+    entries = data["mounts"]
+elif isinstance(data, list):
+    entries = data
+elif isinstance(data, dict):
+    entries = [data]
+else:
+    raise SystemExit("配置顶层必须是对象、数组，或包含 mounts 数组的对象")
+
+for item in entries:
+    if isinstance(item, dict) and str(item.get("name", "")) == selected:
+        item["local_path"] = os.path.abspath(local_path)
+        break
+else:
+    raise SystemExit(f"未找到名为 '{selected}' 的配置")
+
+directory = os.path.dirname(os.path.abspath(config_path))
+fd, temporary = tempfile.mkstemp(prefix=".sshfs-conf-", suffix=".json", dir=directory)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, config_path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
 PY
 }
 
@@ -230,7 +279,7 @@ list_one() {
 
 main() {
   local action="${1:-}" selected="${2:-}"
-  local entries_file selection_mode="all"
+  local entries_file selection_mode="all" enter_remote_terminal="false"
   [[ $# -le 2 ]] || { usage >&2; exit 2; }
   case "$action" in
     mount)
@@ -245,7 +294,12 @@ main() {
         selection_mode="named"
       fi
       ;;
-    unmount|status) need_command mountpoint ;;
+    unmount|status)
+      need_command mountpoint
+      if [[ -n "$selected" ]]; then
+        selection_mode="named"
+      fi
+      ;;
     list) [[ -z "$selected" ]] || die "list 不接受 name 参数" ;;
     -h|--help|help) usage; return ;;
     *) usage >&2; exit 2 ;;
@@ -253,7 +307,7 @@ main() {
 
   entries_file="$(mktemp "${TMPDIR:-/tmp}/sshfs-conf.XXXXXX")"
   trap "rm -f -- '$entries_file'" EXIT
-  read_entries "$selected" "$selection_mode" >"$entries_file" || exit $?
+  read_entries "$selected" "$selection_mode" "$action" >"$entries_file" || exit $?
 
   while IFS= read -r -d '' name \
     && IFS= read -r -d '' ip \
@@ -263,14 +317,37 @@ main() {
     && IFS= read -r -d '' remote_path \
     && IFS= read -r -d '' local_path \
     && IFS= read -r -d '' port \
-    && IFS= read -r -d '' vpn; do
+    && IFS= read -r -d '' vpn \
+    && IFS= read -r -d '' remote_terminal; do
+    if [[ "$remote_terminal" == now && "$local_path" == "$PWD" ]]; then
+      printf '[%s] 提示：now 模式将远程目录直接挂载到当前目录: %s\n' "$name" "$PWD"
+    fi
     case "$action" in
-      mount) mount_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
+      mount)
+        mount_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn"
+        if [[ "$remote_terminal" == now ]]; then
+          persist_now_local_path "$name" "$local_path" \
+            || die "[$name] 无法记录 now 模式的挂载目录"
+          printf '[%s] 已记录挂载目录: %s\n' "$name" "$local_path"
+          if [[ "$selection_mode" == named ]]; then
+            enter_remote_terminal="true"
+          fi
+        fi
+        ;;
       unmount) unmount_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
       status) status_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
       list) list_one "$name" "$ip" "$user" "$password" "$key" "$remote_path" "$local_path" "$port" "$vpn" ;;
     esac
   done <"$entries_file"
+
+  # A named now mount is a complete workflow: mount into the invocation
+  # directory, then replace this process with the matching interactive SSH
+  # session. ssh-vpn uses remote_terminal=now to cd to remote_path.
+  if [[ "$enter_remote_terminal" == true ]]; then
+    rm -f -- "$entries_file"
+    trap - EXIT
+    exec "$SCRIPT_DIR/ssh-vpn" "$selected"
+  fi
 }
 
 main "$@"
