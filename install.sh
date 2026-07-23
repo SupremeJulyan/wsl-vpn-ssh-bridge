@@ -20,7 +20,7 @@ done
 
 mkdir -p -- \
   "$install_dir/bin" "$install_dir/lib" "$install_dir/libexec" \
-  "$install_dir/shell" "$install_dir/systemd" "$bin_dir" "$config_dir"
+  "$install_dir/systemd" "$bin_dir" "$config_dir"
 chmod 700 "$config_dir"
 
 scripts=(
@@ -29,7 +29,7 @@ scripts=(
 helpers=(
   lib/config_wizard.py lib/config_editor.py lib/password_crypto.py
   libexec/vpn-relay-pool.sh libexec/start-vpn-relay.ps1
-  libexec/windows_tcp_relay.py shell/ssh-bridge-reminder.sh
+  libexec/windows_tcp_relay.py
   systemd/sshfs-bridge-cleanup.service.in
 )
 [[ -r "$source_dir/uninstall.sh" ]] || die "安装文件缺失: uninstall.sh"
@@ -54,6 +54,7 @@ for legacy_name in ssh-vpn sshfs-vpn; do
   fi
 done
 rm -f -- "$install_dir/bin/ssh-vpn" "$install_dir/bin/sshfs-vpn" \
+  "$install_dir/shell/ssh-bridge-reminder.sh" \
   "$install_dir/shell/ssh-vpn-reminder.sh" \
   "$install_dir/systemd/sshfs-vpn-cleanup.service.in"
 
@@ -70,12 +71,11 @@ path_line='export PATH="$HOME/.local/bin:$PATH"'
 if [[ ":$PATH:" != *":$bin_dir:"* ]] && ! grep -Fqx "$path_line" "$bashrc" 2>/dev/null; then
   printf '\n# wsl-vpn-ssh-bridge\n%s\n' "$path_line" >>"$bashrc"
 fi
-reminder_line="source \"$install_dir/shell/ssh-bridge-reminder.sh\""
-# Remove reminder paths written by older layouts, then add the current path once.
+# Upgrades remove the retired Bash prompt hook. VS Code terminal lifecycle is
+# managed by the Serverless Remote SSH extension instead.
 if [[ -f "$bashrc" ]]; then
   sed -i -e '\|ssh-bridge-reminder\.sh|d' -e '\|ssh-vpn-reminder\.sh|d' "$bashrc"
 fi
-printf '%s\n' "$reminder_line" >>"$bashrc"
 
 if [[ "${WSL_VPN_SKIP_SERVICE:-0}" == 1 ]]; then
   printf '已按 WSL_VPN_SKIP_SERVICE=1 跳过 SSHFS 清理服务安装\n'

@@ -25,7 +25,7 @@ WSL SSH/SSHFS -> Windows 127.0.0.1 随机端口 -> Windows VPN -> 目标服务�
 旧的 `ssh-conf.json` 和 `sshfs-conf.json` 不再读取。
 
 源码按用途组织：`bin/` 存放命令入口，`lib/` 存放配置与加密模块，`libexec/` 存放 VPN 中继，
-`shell/` 存放终端集成，`systemd/` 存放服务，`examples/` 存放示例。项目根目录只保留安装、
+`systemd/` 存放服务，`examples/` 存放示例。项目根目录只保留安装、
 卸载脚本和仓库说明文件。
 
 卸载时运行：
@@ -98,9 +98,6 @@ WSL 用户会话结束后缓存消失。可通过 `WSL_VPN_PASSWORD_CACHE_TTL` �
 `WSL_VPN_MASTER_PASSWORD` 提供口令（注意环境变量可能被
 同一用户的其他进程读取，不如交互输入安全）。加密依赖 `openssl`，忘记口令后无法恢复密码。
 
-安装程序会在 Bash 中启用挂载目录终端集成；`remote_terminal` 为 `open` 时，进入挂载目录会
-自动执行其引用的 `ssh-bridge host`。
-
 在挂载目录或其子目录中执行不带远程命令的 `ssh-bridge host`，登录后会自动进入映射的远程目录。
 例如本地挂载点是
 `/home/julyan/project/node37`、远程目录是 `/home/zhuyuan`，从本地 `node37/test` 执行
@@ -126,9 +123,9 @@ WSL 用户会话结束后缓存消失。可通过 `WSL_VPN_PASSWORD_CACHE_TTL` �
   成功后把该目录的绝对路径写入 `local_path`，供后续 `status/unmount` 使用，然后自动通过
   `ssh-bridge name` 打开远程终端并进入配置的远程目录。也可以单独执行 `ssh-bridge name`
   进入远程目录。
-- `open`（默认，兼容旧配置）：使用配置的挂载目录；从该目录或其子目录执行
-  新的 Bash 提示符时自动执行 `ssh-bridge name`，并进入对应的远程目录或子目录；退出远程终端后
-  返回本地目录。同一目录不会连续重复触发。
+- `open`（默认，兼容旧配置）：使用配置的挂载目录。Serverless Remote SSH VS Code 插件负责
+  打开对应远程终端；也可以从挂载目录或其子目录手动执行 `ssh-bridge name`，进入对应的远程目录
+  或子目录。
 - `never`：不自动处理远程终端目录。
 
 ```bash
