@@ -14,6 +14,97 @@ bin_dir="${HOME:?}/.local/bin"
 config_dir="${HOME:?}/.wsl-vpn-ssh"
 bashrc="${HOME:?}/.bashrc"
 
+# Detect package manager and install required WSL dependencies mentioned in README.
+detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    echo apt
+  elif command -v dnf >/dev/null 2>&1; then
+    echo dnf
+  elif command -v yum >/dev/null 2>&1; then
+    echo yum
+  elif command -v pacman >/dev/null 2>&1; then
+    echo pacman
+  elif command -v zypper >/dev/null 2>&1; then
+    echo zypper
+  elif command -v apk >/dev/null 2>&1; then
+    echo apk
+  else
+    return 1
+  fi
+}
+
+install_packages() {
+  local pm="$1"; shift
+  local packages=("$@")
+  local installer=""
+  if [[ "$EUID" -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+      installer="sudo"
+    else
+      die "需要 root 或 sudo 来安装依赖软件包"
+    fi
+  fi
+
+  printf '检测到包管理器: %s\n' "$pm"
+  printf '准备安装依赖软件包: %s\n' "${packages[*]}"
+
+  case "$pm" in
+    apt)
+      ${installer:+$installer }apt-get update -y
+      ${installer:+$installer }apt-get install -y "${packages[@]}"
+      ;;
+    dnf)
+      ${installer:+$installer }dnf install -y "${packages[@]}"
+      ;;
+    yum)
+      ${installer:+$installer }yum install -y "${packages[@]}"
+      ;;
+    pacman)
+      ${installer:+$installer }pacman -Sy --noconfirm "${packages[@]}"
+      ;;
+    zypper)
+      ${installer:+$installer }zypper --non-interactive install "${packages[@]}"
+      ;;
+    apk)
+      ${installer:+$installer }apk add --no-cache "${packages[@]}"
+      ;;
+    *)
+      die "不支持的包管理器: $pm"
+      ;;
+  esac
+}
+
+install_required_packages() {
+  local pm
+  if ! pm="$(detect_package_manager)"; then
+    printf '警告: 未检测到受支持的包管理器，跳过依赖安装\n' >&2
+    return 0
+  fi
+
+  local packages=()
+  case "$pm" in
+    apt)
+      packages=(openssh-client python3 util-linux openssl sshfs sshpass)
+      ;;
+    dnf|yum)
+      packages=(openssh-clients python3 util-linux openssl sshfs sshpass)
+      ;;
+    pacman)
+      packages=(openssh python util-linux openssl sshfs sshpass)
+      ;;
+    zypper)
+      packages=(openssh python3 util-linux openssl sshfs sshpass)
+      ;;
+    apk)
+      packages=(openssh-client python3 util-linux openssl sshfs sshpass)
+      ;;
+  esac
+
+  install_packages "$pm" "${packages[@]}"
+}
+
+install_required_packages
+
 for command in install ln readlink python3; do
   command -v "$command" >/dev/null 2>&1 || die "缺少命令 '$command'"
 done
