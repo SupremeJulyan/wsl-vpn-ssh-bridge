@@ -252,6 +252,7 @@ mount_one() {
 
 unmount_one() {
   local name="$1" ip="$2" local_path="$7" port="$8" vpn="$9"
+  local unmount_output unmount_status
   if ! is_mounted "$local_path"; then
     if findmnt -rn -M "$local_path" >/dev/null 2>&1; then
       printf '[%s] 检测到失联挂载，执行懒卸载: %s\n' "$name" "$local_path"
@@ -277,11 +278,41 @@ unmount_one() {
   fi
   printf '[%s] 卸载 %s\n' "$name" "$local_path"
   if command -v fusermount3 >/dev/null 2>&1; then
-    fusermount3 -u -- "$local_path"
+    if unmount_output="$(fusermount3 -u -- "$local_path" 2>&1)"; then
+      :
+    else
+      unmount_status=$?
+      printf '%s\n' "$unmount_output" >&2
+      if [[ "$unmount_output" != *"Device or resource busy"* ]]; then
+        return "$unmount_status"
+      fi
+      printf '[%s] 挂载点繁忙，改用懒卸载: %s\n' "$name" "$local_path"
+      fusermount3 -uz -- "$local_path"
+    fi
   elif command -v fusermount >/dev/null 2>&1; then
-    fusermount -u -- "$local_path"
+    if unmount_output="$(fusermount -u -- "$local_path" 2>&1)"; then
+      :
+    else
+      unmount_status=$?
+      printf '%s\n' "$unmount_output" >&2
+      if [[ "$unmount_output" != *"Device or resource busy"* ]]; then
+        return "$unmount_status"
+      fi
+      printf '[%s] 挂载点繁忙，改用懒卸载: %s\n' "$name" "$local_path"
+      fusermount -uz -- "$local_path"
+    fi
   else
-    umount -- "$local_path"
+    if unmount_output="$(umount -- "$local_path" 2>&1)"; then
+      :
+    else
+      unmount_status=$?
+      printf '%s\n' "$unmount_output" >&2
+      if [[ "$unmount_output" != *"Device or resource busy"* ]]; then
+        return "$unmount_status"
+      fi
+      printf '[%s] 挂载点繁忙，改用懒卸载: %s\n' "$name" "$local_path"
+      umount -l -- "$local_path"
+    fi
   fi
   if [[ "$vpn" == true ]]; then
     stop_relay "$name" "$ip" "$port"
