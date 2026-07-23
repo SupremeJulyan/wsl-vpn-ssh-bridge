@@ -253,9 +253,27 @@ mount_one() {
 unmount_one() {
   local name="$1" ip="$2" local_path="$7" port="$8" vpn="$9"
   if ! is_mounted "$local_path"; then
+    if findmnt -rn -M "$local_path" >/dev/null 2>&1; then
+      printf '[%s] 检测到失联挂载，执行懒卸载: %s\n' "$name" "$local_path"
+      if command -v fusermount3 >/dev/null 2>&1; then
+        fusermount3 -uz -- "$local_path"
+      elif command -v fusermount >/dev/null 2>&1; then
+        fusermount -uz -- "$local_path"
+      else
+        umount -l -- "$local_path"
+      fi
+      findmnt -rn -M "$local_path" >/dev/null 2>&1 \
+        && die "[$name] 失联挂载仍未解除: $local_path"
+      if [[ "$vpn" == true ]]; then
+        stop_relay "$name" "$ip" "$port"
+      fi
+      return 0
+    fi
     printf '[%s] 未挂载: %s\n' "$name" "$local_path"
-    [[ "$vpn" == true ]] && stop_relay "$name" "$ip" "$port"
-    return
+    if [[ "$vpn" == true ]]; then
+      stop_relay "$name" "$ip" "$port"
+    fi
+    return 0
   fi
   printf '[%s] 卸载 %s\n' "$name" "$local_path"
   if command -v fusermount3 >/dev/null 2>&1; then
@@ -265,7 +283,10 @@ unmount_one() {
   else
     umount -- "$local_path"
   fi
-  [[ "$vpn" == true ]] && stop_relay "$name" "$ip" "$port"
+  if [[ "$vpn" == true ]]; then
+    stop_relay "$name" "$ip" "$port"
+  fi
+  return 0
 }
 
 status_one() {
@@ -301,6 +322,7 @@ main() {
       ;;
     unmount|status)
       need_command mountpoint
+      [[ "$action" == unmount ]] && need_command findmnt
       if [[ -n "$selected" ]]; then
         selection_mode="named"
       fi
@@ -335,7 +357,7 @@ main() {
           persist_now_local_path "$name" "$local_path" \
             || die "[$name] 无法记录 now 模式的挂载目录"
           printf '[%s] 已记录挂载目录: %s\n' "$name" "$local_path"
-          if [[ "$selection_mode" == named ]]; then
+          if [[ "$selection_mode" == named && "${SSHFS_BRIDGE_NO_TERMINAL:-0}" != 1 ]]; then
             enter_remote_terminal="true"
           fi
         fi
