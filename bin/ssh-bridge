@@ -8,8 +8,8 @@ usage() {
   ssh-bridge -h | --help
   ssh-bridge config                    创建或编辑配置
   ssh-bridge list
-  ssh-bridge name [远程命令...]
-  ssh-bridge user@host [远程命令...]
+  ssh-bridge [-t | --tty] name [远程命令...]
+  ssh-bridge [-t | --tty] user@host [远程命令...]
 
 示例:
   ssh-bridge example
@@ -25,6 +25,14 @@ die() {
   printf '错误: %s\n' "$*" >&2
   exit 1
 }
+
+force_tty=false
+case "${1:-}" in
+  -t|--tty)
+    force_tty=true
+    shift
+    ;;
+esac
 
 [[ $# -ge 1 ]] || { usage >&2; exit 2; }
 case "$1" in
@@ -233,8 +241,13 @@ fi
 # Automatically trust a host key only when the destination has no existing
 # known_hosts entry. OpenSSH will still reject changed keys.
 ssh_options=(-o StrictHostKeyChecking=accept-new)
-if [[ -n "${ssh_options_auto_cd+x}" ]]; then
-  ssh_options+=("${ssh_options_auto_cd[@]}")
+# Current extension versions request this explicitly. SSH_BRIDGE_MOUNT_NAME
+# keeps interactive folder terminals working with older extension versions
+# that passed the login command without --tty.
+if [[ "$force_tty" == true ]] \
+  || [[ -n "${ssh_options_auto_cd+x}" ]] \
+  || [[ -n "${SSH_BRIDGE_MOUNT_NAME:-}" && ${#remote_args[@]} -gt 0 ]]; then
+  ssh_options+=(-t)
 fi
 if [[ -n "$private_key_path" ]]; then
   [[ -r "$private_key_path" ]] || die "私钥不可读: $private_key_path"
