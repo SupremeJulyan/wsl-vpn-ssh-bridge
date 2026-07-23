@@ -31,7 +31,7 @@ legacy_unit="$user_unit_dir/sshfs-vpn-cleanup.service"
 
 if [[ "$purge" == ask ]]; then
   if [[ -t 0 ]]; then
-    printf '是否同时删除配置和挂载目录 %s？此操作不可恢复 [y/N]: ' "$config_dir"
+    printf '是否同时删除配置目录 %s？此操作不可恢复 [y/N]: ' "$config_dir"
     read -r answer
     case "$answer" in
       y|Y|yes|YES|Yes) purge="yes" ;;
