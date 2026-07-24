@@ -11,6 +11,8 @@ WSL SSH/SSHFS -> Windows 127.0.0.1 随机端口 -> Windows VPN -> 目标服务�
 ```
 
 相同的目标主机和端口共用一个中继。SSH 与多个 SSHFS 挂载通过租约共享它；最后一个使用者退出后，中继自动停止。
+SSHFS 和 SSH 终端还会通过 OpenSSH ControlMaster 共享同一条已认证 SSH
+连接，后续终端不再重复完成 TCP、密钥交换和认证。
 
 ## 安装
 
@@ -75,6 +77,11 @@ VPN_TARGET_PORT=22022 ssh-bridge user@10.0.0.10
 
 配置可包含 `name`、`ip`、`user`、`port`、`vpn`、`private_key_path` 和 `password`。
 推荐使用私钥；配置密码时需安装 `sshpass`。
+
+默认启用 SSH 连接池，控制 socket 位于当前用户私有的运行时目录，主连接空闲后保留
+10 分钟。设置 `WSL_VPN_SSH_CONNECTION_REUSE=0` 可以为单次命令禁用连接复用。
+命令会输出“新建主连接”“复用已有连接”或“已禁用”，并使用 `[性能]` 前缀报告
+配置读取、VPN 中继获取、连接池检查和挂载等阶段用时。
 
 首次连接新主机时，`ssh-bridge` 会自动接受主机密钥并写入 `~/.ssh/known_hosts`，无需手动输入
 `yes`。如果已保存主机的密钥发生变化，SSH 仍会拒绝连接并显示安全警告。
@@ -150,6 +157,13 @@ sshfs-bridge unmount
 
 ```bash
 SSHFS_BRIDGE_DEBUG=1 sshfs-bridge mount example
+```
+
+检查连接池优化是否生效时，先挂载再打开终端。正常情况下应依次看到：
+
+```text
+[project] SSH 连接池: 新建主连接
+SSH 连接池: 复用已有连接
 ```
 
 配置字段 `vpn: true` 表示通过 Windows VPN 中继连接；设为 `false` 时直接连接目标。旧字段 `atrust: true` 仍兼容。

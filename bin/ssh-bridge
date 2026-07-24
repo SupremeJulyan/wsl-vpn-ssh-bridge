@@ -42,6 +42,8 @@ esac
 script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
 script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"
 install_root="$(cd -- "$script_dir/.." && pwd)"
+source "$install_root/libexec/ssh-control-pool.sh"
+bridge_performance_now bridge_started_at
 config_dir="${HOME:?}/.wsl-vpn-ssh"
 config_file="$config_dir/config.json"
 sshfs_config_file="$config_file"
@@ -241,6 +243,8 @@ fi
 # Automatically trust a host key only when the destination has no existing
 # known_hosts entry. OpenSSH will still reject changed keys.
 ssh_options=(-o StrictHostKeyChecking=accept-new)
+ssh_control_prepare || die "SSH 控制连接池初始化失败"
+ssh_options+=("${SSH_CONTROL_OPTIONS[@]}")
 # Current extension versions request this explicitly. SSH_BRIDGE_MOUNT_NAME
 # keeps interactive folder terminals working with older extension versions
 # that passed the login command without --tty.
@@ -261,6 +265,14 @@ if [[ -n "$password" ]]; then
 fi
 
 if [[ "$use_vpn" != true ]]; then
+  bridge_performance_now control_check_started_at
+  control_status="$(ssh_control_status "$local_destination" "$target_port")"
+  bridge_performance_log "SSH 控制连接检查" "$control_check_started_at"
+  printf 'SSH 连接池: %s\n' \
+    "$([[ "$control_status" == reused ]] && printf '复用已有连接' \
+      || [[ "$control_status" == disabled ]] && printf '已禁用' \
+      || printf '新建主连接')" >&2
+  bridge_performance_log "SSH 连接派发前准备总计" "$bridge_started_at"
   exec "${ssh_command[@]}" "${ssh_options[@]}" -p "$target_port" -- "$local_destination" "${remote_args[@]}"
 fi
 
@@ -269,9 +281,11 @@ for command in powershell.exe wslpath flock; do
 done
 source "$install_root/libexec/vpn-relay-pool.sh"
 relay_holder="ssh-$$"
+bridge_performance_now relay_started_at
 read -r relay_pid local_port relay_status < <(
   vpn_relay_acquire "$target_host" "$target_port" "$relay_holder"
 ) || die "Windows TCP 中继启动失败"
+bridge_performance_log "VPN 中继获取" "$relay_started_at"
 cleanup() {
   vpn_relay_release "$target_host" "$target_port" "$relay_holder" || true
 }
@@ -285,6 +299,17 @@ if [[ "$target_port" != 22 ]]; then
   host_key_alias="[$target_host]:$target_port"
 fi
 
+bridge_performance_now control_check_started_at
+control_status="$(ssh_control_status \
+  "$tunnel_destination" "$local_port" \
+  -o "HostKeyAlias=$host_key_alias" -o CheckHostIP=no)"
+bridge_performance_log "SSH 控制连接检查" "$control_check_started_at"
+printf 'SSH 连接池: %s\n' \
+  "$([[ "$control_status" == reused ]] && printf '复用已有连接' \
+    || [[ "$control_status" == disabled ]] && printf '已禁用' \
+    || printf '新建主连接')" >&2
+
+bridge_performance_log "SSH 连接派发前准备总计" "$bridge_started_at"
 "${ssh_command[@]}" \
   "${ssh_options[@]}" \
   -p "$local_port" \

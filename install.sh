@@ -119,7 +119,7 @@ scripts=(
 )
 helpers=(
   lib/config_wizard.py lib/config_editor.py lib/password_crypto.py
-  libexec/vpn-relay-pool.sh libexec/start-vpn-relay.ps1
+  libexec/vpn-relay-pool.sh libexec/ssh-control-pool.sh libexec/start-vpn-relay.ps1
   libexec/windows_tcp_relay.py
   systemd/sshfs-bridge-cleanup.service.in
 )

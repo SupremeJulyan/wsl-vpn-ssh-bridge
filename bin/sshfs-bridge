@@ -8,6 +8,8 @@ INSTALL_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 CONFIG_DIR="${HOME:?}/.wsl-vpn-ssh"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 source "$INSTALL_ROOT/libexec/vpn-relay-pool.sh"
+source "$INSTALL_ROOT/libexec/ssh-control-pool.sh"
+bridge_performance_now bridge_started_at
 
 usage() {
   cat <<'EOF'
@@ -201,6 +203,11 @@ mount_one() {
   local connect_ip="$ip" connect_port="$port"
   local host_key_alias="$ip"
   local mount_status=0
+  local control_status
+  local -a control_check_options=(-o StrictHostKeyChecking=accept-new)
+  local mount_started_at password_started_at relay_started_at
+  local control_check_started_at sshfs_started_at
+  bridge_performance_now mount_started_at
 
   if [[ "$port" != 22 ]]; then
     host_key_alias="[$ip]:$port"
@@ -212,16 +219,24 @@ mount_one() {
   fi
 
   if [[ -n "$password" ]]; then
+    bridge_performance_now password_started_at
     password="$(python3 "$INSTALL_ROOT/lib/password_crypto.py" "$CONFIG_FILE" hosts "$host_name")" \
       || die "[$name] 配置密码处理失败"
+    bridge_performance_log "[$name] 密码解密" "$password_started_at"
   fi
 
   mkdir -p -- "$local_path"
+  ssh_control_prepare || die "[$name] SSH 控制连接池初始化失败"
   if [[ "$vpn" == true ]]; then
+    bridge_performance_now relay_started_at
     connect_port="$(start_relay "$name" "$ip" "$port")"
+    bridge_performance_log "[$name] VPN 中继获取" "$relay_started_at"
     connect_ip="127.0.0.1"
     options=(-p "$connect_port" -o reconnect -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
     options+=(-o "HostKeyAlias=$host_key_alias" -o CheckHostIP=no -o StrictHostKeyChecking=accept-new)
+    control_check_options+=(
+      -o "HostKeyAlias=$host_key_alias" -o CheckHostIP=no
+    )
     printf '[%s] VPN 中继 127.0.0.1:%s -> %s:%s\n' \
       "$name" "$connect_port" "$ip" "$port"
     trap "stop_relay '$name' '$ip' '$port'; exit 130" INT TERM
@@ -229,13 +244,24 @@ mount_one() {
   if [[ -n "$key" ]]; then
     [[ -r "$key" ]] || die "[$name] 私钥不可读: $key"
     options+=(-o "IdentityFile=$key")
+    control_check_options+=(-i "$key")
   fi
+  options+=("${SSH_CONTROL_OPTIONS[@]}")
   if [[ "${SSHFS_BRIDGE_DEBUG:-0}" == 1 ]]; then
     options+=(-f -d -o sshfs_debug -o LogLevel=DEBUG3)
     printf '[%s] 已启用 SSHFS 调试日志（不会输出密码）\n' "$name" >&2
   fi
 
   printf '[%s] 挂载 %s@%s:%s -> %s\n' "$name" "$user" "$ip" "$remote_path" "$local_path"
+  bridge_performance_now control_check_started_at
+  control_status="$(ssh_control_status \
+    "$user@$connect_ip" "$connect_port" "${control_check_options[@]}")"
+  bridge_performance_log "[$name] SSH 控制连接检查" "$control_check_started_at"
+  printf '[%s] SSH 连接池: %s\n' "$name" \
+    "$([[ "$control_status" == reused ]] && printf '复用已有连接' \
+      || [[ "$control_status" == disabled ]] && printf '已禁用' \
+      || printf '新建主连接')" >&2
+  bridge_performance_now sshfs_started_at
   if [[ -n "$password" ]]; then
     printf '%s\n' "$password" | sshfs "${options[@]}" -o password_stdin -- \
       "$user@$connect_ip:$remote_path" "$local_path" || mount_status=$?
@@ -243,11 +269,13 @@ mount_one() {
     sshfs "${options[@]}" -- "$user@$connect_ip:$remote_path" "$local_path" </dev/null \
       || mount_status=$?
   fi
+  bridge_performance_log "[$name] SSHFS 挂载命令" "$sshfs_started_at"
   trap - INT TERM
   if ((mount_status != 0)); then
     [[ "$vpn" == true ]] && stop_relay "$name" "$ip" "$port"
     return "$mount_status"
   fi
+  bridge_performance_log "[$name] 挂载总计" "$mount_started_at"
 }
 
 unmount_one() {
@@ -366,6 +394,7 @@ main() {
   entries_file="$(mktemp "${TMPDIR:-/tmp}/sshfs-conf.XXXXXX")"
   trap "rm -f -- '$entries_file'" EXIT
   read_entries "$selected" "$selection_mode" "$action" >"$entries_file" || exit $?
+  bridge_performance_log "SSHFS 配置读取" "$bridge_started_at"
 
   while IFS= read -r -d '' name \
     && IFS= read -r -d '' ip \
