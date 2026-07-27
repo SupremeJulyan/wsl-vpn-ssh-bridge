@@ -60,3 +60,15 @@ ssh_control_status() {
     printf 'new\n'
   fi
 }
+
+ssh_control_status_label() {
+  case "$1" in
+    reused) printf '复用已有连接\n' ;;
+    disabled) printf '已禁用\n' ;;
+    new) printf '新建主连接\n' ;;
+    *)
+      printf '错误: 未知的 SSH 控制连接状态: %s\n' "$1" >&2
+      return 1
+      ;;
+  esac
+}

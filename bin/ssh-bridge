@@ -268,10 +268,7 @@ if [[ "$use_vpn" != true ]]; then
   bridge_performance_now control_check_started_at
   control_status="$(ssh_control_status "$local_destination" "$target_port")"
   bridge_performance_log "SSH 控制连接检查" "$control_check_started_at"
-  printf 'SSH 连接池: %s\n' \
-    "$([[ "$control_status" == reused ]] && printf '复用已有连接' \
-      || [[ "$control_status" == disabled ]] && printf '已禁用' \
-      || printf '新建主连接')" >&2
+  printf 'SSH 连接池: %s\n' "$(ssh_control_status_label "$control_status")" >&2
   bridge_performance_log "SSH 连接派发前准备总计" "$bridge_started_at"
   exec "${ssh_command[@]}" "${ssh_options[@]}" -p "$target_port" -- "$local_destination" "${remote_args[@]}"
 fi
@@ -304,10 +301,7 @@ control_status="$(ssh_control_status \
   "$tunnel_destination" "$local_port" \
   -o "HostKeyAlias=$host_key_alias" -o CheckHostIP=no)"
 bridge_performance_log "SSH 控制连接检查" "$control_check_started_at"
-printf 'SSH 连接池: %s\n' \
-  "$([[ "$control_status" == reused ]] && printf '复用已有连接' \
-    || [[ "$control_status" == disabled ]] && printf '已禁用' \
-    || printf '新建主连接')" >&2
+printf 'SSH 连接池: %s\n' "$(ssh_control_status_label "$control_status")" >&2
 
 bridge_performance_log "SSH 连接派发前准备总计" "$bridge_started_at"
 "${ssh_command[@]}" \

@@ -59,7 +59,11 @@ export TEST_SSH_LOG="$test_root/ssh.log"
 grep -Fq 'ControlMaster=auto' "$TEST_SSHFS_LOG"
 grep -Fq 'ControlPersist=10m' "$TEST_SSHFS_LOG"
 grep -Fq "ControlPath=$XDG_RUNTIME_DIR/wsl-vpn-ssh-control-$UID/%C" "$TEST_SSHFS_LOG"
-grep -Fq 'SSH 连接池: 复用已有连接' "$test_root/ssh.stderr"
+grep -Fxq 'SSH 连接池: 复用已有连接' "$test_root/ssh.stderr"
+if grep -Fq '复用已有连接已禁用' "$test_root/ssh.stderr"; then
+  printf 'reused connection status included the disabled label\n' >&2
+  exit 1
+fi
 grep -Fq '[性能]' "$test_root/mount.stderr"
 grep -Fq '[性能]' "$test_root/ssh.stderr"
 
@@ -70,7 +74,6 @@ if grep -Fq 'ControlMaster=auto' "$TEST_SSHFS_LOG"; then
   printf 'disabled connection reuse still passed ControlMaster\n' >&2
   exit 1
 fi
-grep -Fq 'SSH 连接池: 已禁用' "$test_root/disabled.stderr"
+grep -Fxq 'SSH 连接池: 已禁用' "$test_root/disabled.stderr"
 
 printf 'connection pool integration test passed\n'
-
